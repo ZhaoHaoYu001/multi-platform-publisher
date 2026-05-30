@@ -95,33 +95,50 @@ class WechatPlatform(PlatformBase):
             title: 适配后的标题
             content: 适配后的内容（富文本格式）
             images: 图片路径列表
-            **kwargs: 其他参数
+            **kwargs: 其他参数（author, digest, cover_image_path）
 
         Returns:
             发布结果
         """
-        # TODO: 实现实际的微信API调用
-        # 这里返回模拟的发布结果，提示需要实现的API调用
+        # 检查凭证
+        if not self.app_id or not self.app_secret:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未配置微信公众号凭证（app_id/app_secret）",
+            )
 
-        api_info = (
-            "微信公众号发布需要以下步骤：\n"
-            "1. 获取access_token: GET /cgi-bin/token\n"
-            "2. 上传图片: POST /cgi-bin/media/upload\n"
-            "3. 创建草稿: POST /cgi-bin/draft/add\n"
-            "4. 发布: POST /cgi-bin/freepublish/submit"
-        )
+        try:
+            from ..api.wechat_api import WechatAPI
 
-        return PublishResult(
-            success=True,
-            platform=self.name,
-            message=f"[微信公众号] 待实现: {api_info}",
-            raw_response={
-                "title": title,
-                "content": content[:100] + "..." if len(content) > 100 else content,
-                "images": images,
-                "api_required": True,
-            },
-        )
+            api = WechatAPI(app_id=self.app_id, app_secret=self.app_secret)
+
+            # 获取可选参数
+            author = kwargs.get("author", "")
+            digest = kwargs.get("digest", "")
+            cover_image_path = kwargs.get("cover_image_path", images[0] if images else None)
+
+            result = api.publish_article(
+                title=title,
+                content=content,
+                author=author,
+                digest=digest,
+                cover_image_path=cover_image_path,
+            )
+
+            return PublishResult(
+                success=result.get("success", False),
+                platform=self.name,
+                message=result.get("message", "发布完成"),
+                raw_response=result,
+            )
+
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"发布失败: {str(e)}",
+            )
 
     def get_access_token(self) -> Optional[str]:
         """获取微信公众号access_token.
@@ -132,6 +149,9 @@ class WechatPlatform(PlatformBase):
         if not self.app_id or not self.app_secret:
             return None
 
-        # TODO: 实现实际的token获取逻辑
-        # url = f"https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={self.app_id}&secret={self.app_secret}"
-        return None
+        try:
+            from ..api.wechat_api import WechatAPI
+            api = WechatAPI(app_id=self.app_id, app_secret=self.app_secret)
+            return api.get_access_token()
+        except Exception:
+            return None

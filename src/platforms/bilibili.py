@@ -88,33 +88,54 @@ class BilibiliPlatform(PlatformBase):
 
         Args:
             title: 适配后的标题
-            content: 适配后的内容（B站专栏格式）
+            content: 适配后的内容（Markdown格式，会自动转BBCode）
             images: 图片路径列表
-            **kwargs: 其他参数
+            **kwargs: 其他参数（category, tags, summary）
 
         Returns:
             发布结果
         """
-        # TODO: 实现实际的B站API调用
-        api_info = (
-            "B站专栏发布需要以下步骤：\n"
-            "1. 验证登录: GET /x/member/web/account\n"
-            "2. 上传图片: POST /x/article/creative/article/upcover\n"
-            "3. 创建/更新专栏: POST /x/article/creative/draft/addupdate\n"
-            "4. 发布专栏: POST /x/article/creative/draft/submit"
-        )
+        # 检查凭证
+        if not self.sess_data:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未配置B站凭证（sess_data）",
+            )
 
-        return PublishResult(
-            success=True,
-            platform=self.name,
-            message=f"[B站] 待实现: {api_info}",
-            raw_response={
-                "title": title,
-                "content": content[:100] + "..." if len(content) > 100 else content,
-                "images": images,
-                "api_required": True,
-            },
-        )
+        try:
+            from ..api.bilibili_api import BilibiliAPI
+
+            api = BilibiliAPI(sess_data=self.sess_data, csrf=self.csrf)
+
+            # 获取可选参数
+            category = kwargs.get("category", 4)
+            tags = kwargs.get("tags", "")
+            summary = kwargs.get("summary", "")
+            cover_image_path = kwargs.get("cover_image_path", images[0] if images else None)
+
+            result = api.publish_article(
+                title=title,
+                content=content,
+                category=category,
+                tags=tags,
+                summary=summary,
+                cover_image_path=cover_image_path,
+            )
+
+            return PublishResult(
+                success=result.get("success", False),
+                platform=self.name,
+                message=result.get("message", "发布完成"),
+                raw_response=result,
+            )
+
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"发布失败: {str(e)}",
+            )
 
     def check_login(self) -> bool:
         """检查B站登录状态.
@@ -125,5 +146,9 @@ class BilibiliPlatform(PlatformBase):
         if not self.sess_data:
             return False
 
-        # TODO: 实现实际的登录检查
-        return False
+        try:
+            from ..api.bilibili_api import BilibiliAPI
+            api = BilibiliAPI(sess_data=self.sess_data, csrf=self.csrf)
+            return api.check_login()
+        except Exception:
+            return False
