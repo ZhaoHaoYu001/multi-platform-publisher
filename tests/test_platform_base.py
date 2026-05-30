@@ -157,3 +157,68 @@ class TestPlatformBase:
         """测试对象字符串表示."""
         assert "MockPlatform" in repr(self.platform)
         assert "mock" in repr(self.platform)
+
+    def test_title_truncation_with_ellipsis(self):
+        """测试标题截断后添加省略号."""
+        long_title = "这是一" * 20 + "个很长的标题"
+        result = self.platform.adapt_title(long_title)
+        assert len(result) <= 50
+        assert result.endswith("...")
+
+    def test_title_no_truncation_when_short(self):
+        """测试短标题不截断."""
+        short_title = "短标题"
+        result = self.platform.adapt_title(short_title)
+        assert result == short_title
+        assert not result.endswith("...")
+
+    def test_content_truncation_preserves_meaning(self):
+        """测试内容截断保留完整意思."""
+        long_content = "重要段落。\n" + "x" * 2000
+        result = self.platform.adapt_content(long_content)
+        assert "重要段落" in result
+        assert "内容过长" in result or len(result) <= 1000
+
+    def test_image_limit_boundary(self):
+        """测试图片数量边界值."""
+        # 正好等于限制
+        images = ["img.jpg"] * 5
+        result = self.platform.validate_images(images)
+        assert len(result) == 5
+
+        # 超过限制1张
+        images = ["img.jpg"] * 6
+        with pytest.raises(ValueError):
+            self.platform.validate_images(images)
+
+    def test_simulate_publish_returns_preview_info(self):
+        """测试模拟发布返回预览信息."""
+        result = self.platform.publish(
+            title="测试标题",
+            content="测试内容",
+            images=["img1.jpg", "img2.jpg"],
+            mode=PublishMode.SIMULATE,
+        )
+        assert result.success is True
+        assert result.raw_response is not None
+        assert result.raw_response["images_count"] == 2
+        assert result.raw_response["content_type"] == "richtext"
+
+    def test_publish_empty_images(self):
+        """测试无图片发布."""
+        result = self.platform.publish(
+            title="标题",
+            content="内容",
+            images=[],
+            mode=PublishMode.SIMULATE,
+        )
+        assert result.success is True
+
+    def test_publish_none_images(self):
+        """测试images为None时发布."""
+        result = self.platform.publish(
+            title="标题",
+            content="内容",
+            mode=PublishMode.SIMULATE,
+        )
+        assert result.success is True
