@@ -449,6 +449,11 @@ class App:
 
 def main() -> None:
     """主函数入口."""
+    # 设置UTF-8编码（Windows兼容）
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
     app = App()
     try:
         app.run()

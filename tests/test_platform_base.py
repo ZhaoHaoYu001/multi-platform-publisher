@@ -90,7 +90,7 @@ class TestPlatformBase:
 
     def test_adapt_title_long(self):
         """测试长标题截断."""
-        title = "这是一个很长很长很长很长很长很长很长很长很长很长很长的标题，超过50个字符"
+        title = "这是一个非常非常非常非常非常非常非常非常非常非常非常非常非常长的标题，这个标题肯定超过50个字符的限制需要被截断处理"
         result = self.platform.adapt_title(title)
         assert len(result) <= 50
         assert result.endswith("...")

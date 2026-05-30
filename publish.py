@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """多平台内容发布工具 - 命令行工具.
 
 提供命令行接口，支持快速发布内容到多个平台。
@@ -116,6 +117,11 @@ def init_platform_manager(platforms: List[str]) -> PlatformManager:
 
 def main() -> None:
     """主函数入口."""
+    # 设置UTF-8编码（Windows兼容）
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
     parser = argparse.ArgumentParser(
         description="多平台内容发布工具",
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -47,7 +47,7 @@ class PublishResult:
 
     def __str__(self) -> str:
         """返回发布结果的字符串表示."""
-        status = "✅ 成功" if self.success else "❌ 失败"
+        status = "[OK] Success" if self.success else "[FAIL] Failed"
         return f"[{self.platform}] {status}: {self.message}"
 
 
