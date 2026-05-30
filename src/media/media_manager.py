@@ -304,6 +304,11 @@ class MediaManager:
         Raises:
             ValueError: 不支持的平台时抛出
         """
+        from .image_processor import PLATFORM_REQUIREMENTS
+
+        if platform not in PLATFORM_REQUIREMENTS:
+            raise ValueError(f"不支持的平台: {platform}")
+
         output_dir = output_dir or self._workspace_dir
         os.makedirs(output_dir, exist_ok=True)
 

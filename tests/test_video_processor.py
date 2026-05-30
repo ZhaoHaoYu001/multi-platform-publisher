@@ -93,15 +93,18 @@ class TestVideoInfoExtraction:
         with pytest.raises(FileNotFoundError):
             processor.get_video_info("nonexistent.mp4")
 
+    @patch("os.path.exists", return_value=True)
     @patch("subprocess.run")
-    def test_get_video_info_no_ffmpeg(self, mock_run, processor):
+    def test_get_video_info_no_ffmpeg(self, mock_run, mock_exists, processor):
         """测试ffmpeg未安装."""
         mock_run.side_effect = FileNotFoundError()
         with pytest.raises(FFmpegNotFoundError):
             processor.get_video_info("test.mp4")
 
+    @patch("os.path.getsize", return_value=10485760)
+    @patch("os.path.exists", return_value=True)
     @patch("subprocess.run")
-    def test_get_video_info_success(self, mock_run, processor):
+    def test_get_video_info_success(self, mock_run, mock_exists, mock_getsize, processor):
         """测试成功获取视频信息."""
         # 模拟ffprobe输出
         mock_output = """{
@@ -162,8 +165,10 @@ class TestVideoCompression:
         )
         assert result == "output.mp4"
 
+    @patch("os.path.getsize", return_value=10485760)
+    @patch("os.path.exists", return_value=True)
     @patch("subprocess.run")
-    def test_compress_with_target_size(self, mock_run, processor):
+    def test_compress_with_target_size(self, mock_run, mock_exists, mock_getsize, processor):
         """测试指定目标大小压缩."""
         # 模拟get_video_info的返回
         mock_output = """{
@@ -172,9 +177,9 @@ class TestVideoCompression:
         }"""
 
         mock_run.side_effect = [
+            MagicMock(returncode=0),  # check_ffmpeg (compress_video)
             MagicMock(returncode=0),  # check_ffmpeg (get_video_info)
             MagicMock(returncode=0, stdout=mock_output),  # ffprobe
-            MagicMock(returncode=0),  # check_ffmpeg (compress)
             MagicMock(returncode=0),  # compress
         ]
 

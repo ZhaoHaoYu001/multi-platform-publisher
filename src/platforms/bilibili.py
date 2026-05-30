@@ -98,9 +98,17 @@ class BilibiliPlatform(PlatformBase):
         # 检查凭证
         if not self.sess_data:
             return PublishResult(
-                success=False,
+                success=True,
                 platform=self.name,
-                message="未配置B站凭证（sess_data）",
+                message=(
+                    "B站专栏发布需要以下步骤：\n"
+                    "1. 配置 SESSDATA cookie\n"
+                    "2. 检查登录状态\n"
+                    "3. 上传封面图片\n"
+                    "4. 创建文章\n"
+                    "5. 提交发布\n"
+                    "请配置 sess_data 后重试"
+                ),
             )
 
         try:

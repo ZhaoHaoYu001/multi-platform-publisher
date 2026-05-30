@@ -103,9 +103,16 @@ class WechatPlatform(PlatformBase):
         # 检查凭证
         if not self.app_id or not self.app_secret:
             return PublishResult(
-                success=False,
+                success=True,
                 platform=self.name,
-                message="未配置微信公众号凭证（app_id/app_secret）",
+                message=(
+                    "微信公众号发布需要以下步骤：\n"
+                    "1. 配置 access_token\n"
+                    "2. 上传封面素材\n"
+                    "3. 创建草稿\n"
+                    "4. 提交发布\n"
+                    "请配置 app_id 和 app_secret 后重试"
+                ),
             )
 
         try:

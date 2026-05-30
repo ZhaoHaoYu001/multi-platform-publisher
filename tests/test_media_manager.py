@@ -15,7 +15,7 @@ from src.media.video_processor import VideoProcessor
 @pytest.fixture
 def temp_dir():
     """创建临时目录."""
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         yield tmpdir
 
 

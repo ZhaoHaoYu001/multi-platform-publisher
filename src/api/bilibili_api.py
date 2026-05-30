@@ -117,14 +117,21 @@ class BilibiliAPI:
         # 引用
         content = re.sub(r'^> (.+)$', r'[quote]\1[/quote]', content, flags=re.MULTILINE)
 
-        # 无序列表
-        content = re.sub(r'^- (.+)$', r'[list]\n[*]\1\n[/list]', content, flags=re.MULTILINE)
+        # 图片（必须在链接之前处理，避免 ![alt](url) 被链接正则误匹配）
+        content = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'[img]\2[/img]', content)
 
         # 链接
         content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'[url=\2]\1[/url]', content)
 
-        # 图片
-        content = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'[img]\2[/img]', content)
+        # 无序列表（合并为单个 [list] 块）
+        def _wrap_list(matchobj: re.Match) -> str:
+            lines = matchobj.group(0).strip().split("\n")
+            items = "\n".join(
+                f"[*]{re.sub(r'^- ', '', line)}" for line in lines
+            )
+            return f"[list]\n{items}\n[/list]"
+
+        content = re.sub(r'(?:^- .+$\n?)+', _wrap_list, content, flags=re.MULTILINE)
 
         # 分割线
         content = re.sub(r'^---+$', '[hr]', content, flags=re.MULTILINE)
