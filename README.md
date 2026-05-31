@@ -2,9 +2,10 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/ZhaoHaoYu001/multi-platform-publisher/actions/workflows/ci.yml/badge.svg)](https://github.com/ZhaoHaoYu001/multi-platform-publisher/actions/workflows/ci.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Tests](https://img.shields.io/badge/tests-200%2B-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/tests-355%2B-brightgreen.svg)](tests/)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/ZhaoHaoYu001/multi-platform-publisher/releases)
 
 一个功能完整的多平台内容发布Python工具，支持微信公众号、知乎、B站、小红书、抖音、微博等6个平台的一键发布。
@@ -34,6 +35,7 @@
 - 🚀 **一键多平台发布** - 同时发布到6个平台
 - 📝 **内容自适应** - YAML规则引擎自动适配各平台格式
 - 🖼️ **智能图片处理** - 按平台规则自动裁剪、压缩、调整比例
+- 🤖 **AI内容生成** - 集成MiMo大模型，一句话生成完整文案，支持5种风格
 - 📁 **草稿管理** - 支持草稿保存、版本管理和导出
 - 👁️ **发布预览** - 发布前预览各平台的最终效果
 - 🔌 **可扩展架构** - 适配器模式，轻松添加新平台
@@ -105,6 +107,13 @@ DOUYIN_COOKIE=your_cookie
 # 微博（可选）
 WEIBO_COOKIE=your_cookie
 
+# ──────────────────────────────────────
+# AI 大模型配置（MiMo）
+# ──────────────────────────────────────
+MIMO_API_KEY=tp-your-api-key
+MIMO_BASE_URL=https://token-plan-sgp.xiaomimimo.com/anthropic
+MIMO_MODEL=mimo-v2.5-pro
+
 # RPA浏览器登录态复用（可选，默认开启）
 MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
 MULTI_PUBLISHER_RPA_AUTO_LOGIN=false
@@ -142,7 +151,7 @@ python web/app.py
 ```
 
 访问 http://localhost:5000 使用Web界面：
-- **编辑页面** - Markdown编辑器 + 实时预览
+- **编辑页面** - Markdown编辑器 + 实时预览 + AI内容生成
 - **模板页面** - 选择模板快速创建内容
 - **任务页面** - 监控发布任务状态
 - **设置页面** - 查看凭证配置状态
@@ -191,6 +200,24 @@ ctx = PipelineContext(metadata={"raw_content": "# 内容\n\n正文", "mode": Pub
 result = pipeline.execute(ctx)
 ```
 
+
+### 方式五：AI 内容生成
+
+```python
+from src.ai.mimo_client import MiMoClient
+from src.ai.content_generator import ContentGenerator
+
+generator = ContentGenerator(client=MiMoClient())
+result = generator.generate(
+    prompt="介绍Python 3.12的新特性",
+    style="tech-tutorial",       # tech-tutorial/product-review/daily-share/industry-analysis/general
+    target_platform="wechat",    # 按平台特性生成
+)
+print(result.title, result.content, result.tags)
+```
+
+支持的内容风格：技术教程(`tech-tutorial`)、产品评测(`product-review`)、日常分享(`daily-share`)、行业分析(`industry-analysis`)、通用(`general`)。
+
 ## 🏗️ 项目架构
 
 ```
@@ -217,6 +244,13 @@ result = pipeline.execute(ctx)
 │  │ TaskQueue    │  │ Scheduler │  │ TemplateManager    │   │
 │  │ (任务队列)   │  │ (调度器)  │  │ (模板管理)         │   │
 │  └──────────────┘  └───────────┘  └────────────────────┘   │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│                   AI 内容生成层                              │
+│  ┌──────────────────────┐  ┌───────────────────────────┐   │
+│  │  ContentGenerator    │  │  MiMoClient                │   │
+│  │  (文案生成+适配)     │  │  (Anthropic 兼容 API)     │   │
+│  └──────────────────────┘  └───────────────────────────┘   │
 │                                                             │
 ├─────────────────────────────────────────────────────────────┤
 │                     平台适配器层                             │
@@ -247,7 +281,6 @@ multi-platform-publisher/
 ├── src/
 │   ├── core/                       # 核心模块
 │   │   ├── platform_base.py        # 平台基类
-│   │   ├── platform_manager.py     # 平台管理器
 │   │   ├── content_document.py     # 文档模型
 │   │   ├── content_parser.py       # Markdown解析器
 │   │   ├── rule_engine.py          # YAML规则引擎
