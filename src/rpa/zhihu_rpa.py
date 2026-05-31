@@ -40,34 +40,11 @@ class ZhihuRPA(RPABase):
                 return False
 
         try:
-            # 访问知乎
-            self._page.goto(self.HOME_URL, wait_until="domcontentloaded")
-            time.sleep(2)
-
-            # 检查是否已登录
-            cookies = self._context.cookies() if self._context else []
-            has_token = any(c["name"] == "z_c0" for c in cookies)
-
-            if has_token:
-                print("[RPA-知乎] 已检测到登录状态")
-                return True
-
-            # 未登录，等待用户手动登录
-            print("[RPA-知乎] 请在浏览器中手动登录知乎...")
-            print("[RPA-知乎] 登录完成后请按回车继续...")
-
-            # 等待登录完成（最多5分钟）
-            for _ in range(300):
-                time.sleep(1)
-                cookies = self._context.cookies() if self._context else []
-                if any(c["name"] == "z_c0" for c in cookies):
-                    print("[RPA-知乎] 登录成功！")
-                    self._save_cookies()
-                    return True
-
-            print("[RPA-知乎] 登录超时")
-            return False
-
+            return self.ensure_logged_in(
+                url=self.HOME_URL,
+                cookie_names=["z_c0"],
+                platform_label="知乎",
+            )
         except Exception as e:
             print(f"[RPA-知乎] 登录失败: {e}")
             return False

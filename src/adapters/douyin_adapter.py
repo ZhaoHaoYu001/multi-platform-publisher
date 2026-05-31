@@ -50,7 +50,6 @@ class DouyinAdapter(PlatformAdapter):
         try:
             rpa = DouyinRPA()
             with rpa:
-                rpa.login()
                 result = rpa.publish(
                     title=adapted.title,
                     content=adapted.content,

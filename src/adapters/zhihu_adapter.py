@@ -34,7 +34,6 @@ class ZhihuAdapter(PlatformAdapter):
         try:
             rpa = ZhihuRPA()
             with rpa:
-                rpa.login()
                 result = rpa.publish(title=adapted.title, content=adapted.content, images=images)
             return PublishResult(success=result.get("success", False), platform=self.platform_name, message=result.get("message", ""))
         except Exception as e:

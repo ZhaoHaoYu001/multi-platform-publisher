@@ -19,6 +19,28 @@ class TestRPABase:
         with tempfile.TemporaryDirectory() as d:
             r = T(platform_name='bilibili', cookie_dir=d)
             assert 'bilibili_cookies.json' in r.cookie_file
+    def test_profile_path(self):
+        from src.rpa.base import RPABase
+        class T(RPABase):
+            def login(self): return True
+            def publish(self, title, content, images, **kw): return {'success': True}
+        with tempfile.TemporaryDirectory() as d:
+            r = T(platform_name='zhihu', profile_dir=d)
+            assert r.profile_path.endswith(os.path.join('zhihu'))
+            assert os.path.isdir(r.profile_path)
+            assert r.use_persistent_profile is True
+    def test_has_login_cookies(self):
+        from src.rpa.base import RPABase
+        class T(RPABase):
+            def login(self): return True
+            def publish(self, title, content, images, **kw): return {'success': True}
+        class C:
+            def cookies(self):
+                return [{'name': 'SESSDATA'}]
+        r = T(platform_name='bilibili')
+        r._context = C()
+        assert r.has_login_cookies(['SESSDATA']) is True
+        assert r.has_login_cookies(['z_c0']) is False
     def test_context_manager(self):
         from src.rpa.base import RPABase
         class T(RPABase):

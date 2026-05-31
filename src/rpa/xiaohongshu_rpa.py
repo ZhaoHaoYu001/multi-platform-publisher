@@ -40,34 +40,11 @@ class XiaohongshuRPA(RPABase):
                 return False
 
         try:
-            # 访问小红书创作者中心
-            self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
-            time.sleep(2)
-
-            # 检查是否已登录
-            cookies = self._context.cookies() if self._context else []
-            has_session = any(c["name"] == "web_session" for c in cookies)
-
-            if has_session:
-                print("[RPA-小红书] 已检测到登录状态")
-                return True
-
-            # 未登录，等待用户手动登录
-            print("[RPA-小红书] 请在浏览器中手动登录小红书...")
-            print("[RPA-小红书] 登录完成后请按回车继续...")
-
-            # 等待登录完成（最多5分钟）
-            for _ in range(300):
-                time.sleep(1)
-                cookies = self._context.cookies() if self._context else []
-                if any(c["name"] == "web_session" for c in cookies):
-                    print("[RPA-小红书] 登录成功！")
-                    self._save_cookies()
-                    return True
-
-            print("[RPA-小红书] 登录超时")
-            return False
-
+            return self.ensure_logged_in(
+                url=self.PUBLISH_URL,
+                cookie_names=["web_session"],
+                platform_label="小红书",
+            )
         except Exception as e:
             print(f"[RPA-小红书] 登录失败: {e}")
             return False

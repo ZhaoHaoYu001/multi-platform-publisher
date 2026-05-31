@@ -35,15 +35,16 @@ class WeiboRPA(RPABase):
         Returns:
             是否登录成功
         """
-        try:
-            page = self._context.new_page()
-            page.goto(self.LOGIN_URL)
+        if not self._page and not self.launch_browser():
+            return False
 
-            # 等待用户登录（检测登录成功标志）
-            page.wait_for_url("**/home**", timeout=120000)
-            self._save_cookies()
-            page.close()
-            return True
+        try:
+            return self.ensure_logged_in(
+                url=self.LOGIN_URL,
+                cookie_names=["SUB"],
+                platform_label="微博",
+                timeout=120,
+            )
         except Exception as e:
             print(f"登录失败: {e}")
             return False
@@ -64,7 +65,13 @@ class WeiboRPA(RPABase):
         Returns:
             发布结果
         """
+        if not self._context and not self.launch_browser():
+            return {"success": False, "message": "启动浏览器失败"}
+
         try:
+            if not self.login():
+                return {"success": False, "message": "未登录微博"}
+
             page = self._context.new_page()
             page.goto(self.PUBLISH_URL)
             page.wait_for_load_state("networkidle")

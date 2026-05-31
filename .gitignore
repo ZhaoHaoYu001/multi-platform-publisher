@@ -60,3 +60,4 @@ temp/
 # RPA运行时文件
 cookies/
 screenshots/
+browser_profiles/

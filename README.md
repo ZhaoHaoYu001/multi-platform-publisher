@@ -104,6 +104,26 @@ DOUYIN_COOKIE=your_cookie
 
 # 微博（可选）
 WEIBO_COOKIE=your_cookie
+
+# RPA浏览器登录态复用（可选，默认开启）
+MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
+# MULTI_PUBLISHER_RPA_PROFILE_DIR=~/.multi_publisher/browser_profiles
+```
+
+### RPA登录态复用
+
+真实发布走 RPA 时，系统默认使用专用的持久化浏览器 Profile：
+
+```text
+~/.multi_publisher/browser_profiles/<platform>
+```
+
+第一次发布或手动登录时需要在弹出的浏览器里完成扫码/账号登录；登录态会保存到该 Profile。后续真实发布会先检测该 Profile 里的 cookie、localStorage、IndexedDB 等浏览器状态，能识别已登录状态时会直接进入发布流程，不再反复要求输入账号密码。
+
+如需禁用该行为，可在 `.env` 中设置：
+
+```env
+MULTI_PUBLISHER_RPA_PERSIST_PROFILE=false
 ```
 
 ## 📖 使用方式
