@@ -107,7 +107,7 @@ class TestPublishPipeline:
         engine = RuleEngine(RULES_DIR)
         adapter = WechatAdapter(engine, {})
         pipeline = PublishPipeline.create_default(adapter, title="标题")
-        assert len(pipeline._stages) == 4
+        assert len(pipeline._stages) == 5
 
     def test_execute_simulate(self):
         engine = RuleEngine(RULES_DIR)
