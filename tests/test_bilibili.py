@@ -78,15 +78,15 @@ class TestBilibiliPlatform:
         assert "模拟发布" in result.message
 
     def test_real_publish(self):
-        """测试真实发布（返回API提示）."""
+        """测试真实发布（无凭证返回失败）."""
         result = self.platform.publish(
             title="测试标题",
             content="测试内容",
             images=["test.jpg"],
             mode=PublishMode.REAL,
         )
-        assert result.success is True
-        assert "B站专栏发布需要以下步骤" in result.message
+        assert result.success is False
+        assert "未配置B站凭证" in result.message
 
     def test_check_login_no_creds(self):
         """测试无凭证检查登录."""
