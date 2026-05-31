@@ -27,6 +27,7 @@ from src.core.credential_store import CredentialStore
 from src.core.platform_base import PublishMode
 from src.core.rule_engine import RuleEngine
 from src.core.task_queue import TaskQueue
+from src.core.scheduler import Scheduler
 from src.draft.draft_manager import DraftManager
 from src.media.image_processor import ImageProcessor
 from src.pipeline.publish_pipeline import (
@@ -47,6 +48,7 @@ draft_manager = DraftManager(storage_dir=os.path.join(os.path.dirname(__file__),
 previewer = Previewer()
 task_queue = TaskQueue()
 image_processor = ImageProcessor()
+scheduler = Scheduler(task_queue)
 
 # 初始化适配器注册中心
 registry = AdapterRegistry(rule_engine)
@@ -434,6 +436,86 @@ def apply_template(template_id):
         content = content.replace("{{" + key + "}}", value)
 
     return jsonify({"success": True, "title": title, "content": content})
+
+
+# ──────────────────── 定时发布 API ────────────────────
+
+@app.route("/api/schedule", methods=["POST"])
+def schedule_publish():
+    """创建定时发布任务."""
+    data = request.json
+    title = data.get("title", "")
+    content = data.get("content", "")
+    tags = data.get("tags", "")
+    images = data.get("images", [])
+    platforms = data.get("platforms", [])
+    scheduled_at = data.get("scheduled_at")  # ISO格式时间
+    delay_seconds = data.get("delay_seconds")  # 延迟秒数
+
+    if not title or not content:
+        return jsonify({"success": False, "message": "请填写标题和内容"}), 400
+
+    if not platforms:
+        return jsonify({"success": False, "message": "请至少选择一个平台"}), 400
+
+    # 解析时间
+    from datetime import datetime as dt, timedelta
+    if scheduled_at:
+        try:
+            run_at = dt.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        except ValueError:
+            return jsonify({"success": False, "message": "时间格式无效"}), 400
+    elif delay_seconds:
+        run_at = dt.now() + timedelta(seconds=int(delay_seconds))
+    else:
+        return jsonify({"success": False, "message": "请指定执行时间或延迟"}), 400
+
+    results = {}
+    for platform_name in platforms:
+        task_id = task_queue.schedule_at(
+            platform=platform_name,
+            title=title,
+            scheduled_at=run_at,
+            content=content,
+            images=images,
+            tags=tags,
+        )
+        results[platform_name] = {"task_id": task_id, "scheduled_at": run_at.isoformat()}
+
+    return jsonify({"success": True, "results": results})
+
+
+@app.route("/api/schedule", methods=["GET"])
+def list_scheduled():
+    """列出定时任务."""
+    tasks = task_queue.list_scheduled_tasks()
+    return jsonify({
+        "success": True,
+        "tasks": [
+            {
+                "id": t.id,
+                "platform": t.platform,
+                "title": t.title,
+                "status": t.status,
+                "scheduled_at": t.scheduled_at.isoformat() if t.scheduled_at else None,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in tasks
+        ],
+    })
+
+
+@app.route("/api/schedule/<task_id>", methods=["DELETE"])
+def cancel_scheduled(task_id):
+    """取消定时任务."""
+    success = task_queue.cancel_task(task_id)
+    return jsonify({"success": success})
+
+
+@app.route("/api/scheduler/status", methods=["GET"])
+def scheduler_status():
+    """获取调度器状态."""
+    return jsonify({"success": True, "status": scheduler.get_status()})
 
 
 # ──────────────────── 凭证 API ────────────────────
