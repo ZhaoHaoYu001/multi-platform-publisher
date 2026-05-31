@@ -21,6 +21,7 @@ from src.adapters.zhihu_adapter import ZhihuAdapter
 from src.adapters.bilibili_adapter import BilibiliAdapter
 from src.adapters.xiaohongshu_adapter import XiaohongshuAdapter
 from src.core.content_parser import ContentParser
+from src.core.credential_store import CredentialStore
 from src.core.platform_base import PublishMode
 from src.core.rule_engine import RuleEngine
 from src.core.task_queue import TaskQueue
@@ -49,28 +50,14 @@ image_processor = ImageProcessor()
 registry = AdapterRegistry(rule_engine)
 
 
-def _load_credentials() -> dict:
-    """从环境变量加载所有平台凭证."""
-    from dotenv import load_dotenv
-    load_dotenv()
+# 初始化凭证管理器
+credential_store = CredentialStore()
+credential_store.load_from_env()
 
-    return {
-        "wechat": {
-            "app_id": os.getenv("WECHAT_APP_ID", ""),
-            "app_secret": os.getenv("WECHAT_APP_SECRET", ""),
-        },
-        "zhihu": {
-            "username": os.getenv("ZHIHU_USERNAME", ""),
-            "password": os.getenv("ZHIHU_PASSWORD", ""),
-        },
-        "bilibili": {
-            "sess_data": os.getenv("BILIBILI_SESS_DATA", ""),
-            "csrf": os.getenv("BILIBILI_CSRF", ""),
-        },
-        "xiaohongshu": {
-            "cookie": os.getenv("XIAOHONGSHU_COOKIE", ""),
-        },
-    }
+
+def _load_credentials() -> dict:
+    """从 CredentialStore 获取所有平台凭证."""
+    return {p: credential_store.get(p) for p in credential_store.list_platforms()}
 
 
 def _init_registry() -> AdapterRegistry:
@@ -450,10 +437,7 @@ def apply_template(template_id):
 @app.route("/api/credentials", methods=["GET"])
 def get_credentials():
     """获取凭证状态（不返回实际值）."""
-    creds = _load_credentials()
-    status = {}
-    for platform, keys in creds.items():
-        status[platform] = {k: bool(v) for k, v in keys.items()}
+    status = credential_store.get_all_status()
     return jsonify({"success": True, "credentials": status})
 
 
