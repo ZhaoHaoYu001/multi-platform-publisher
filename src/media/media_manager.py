@@ -335,6 +335,52 @@ class MediaManager:
 
         return results
 
+    def upload_to_platform(
+        self,
+        platform: str,
+        credentials: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, str]:
+        """将处理后的媒体上传到平台.
+
+        Args:
+            platform: 平台名称
+            credentials: 平台凭证
+
+        Returns:
+            本地路径到远程URL的映射
+        """
+        from ..adapters.registry import AdapterRegistry
+        from ..core.rule_engine import RuleEngine
+
+        credentials = credentials or {}
+        results: Dict[str, str] = {}
+
+        # 使用适配器上传
+        rule_engine = RuleEngine()
+        registry = AdapterRegistry(rule_engine)
+
+        # 注册适配器
+        from ..adapters.wechat_adapter import WechatAdapter
+        from ..adapters.zhihu_adapter import ZhihuAdapter
+        from ..adapters.bilibili_adapter import BilibiliAdapter
+        from ..adapters.xiaohongshu_adapter import XiaohongshuAdapter
+
+        registry.register("wechat", WechatAdapter)
+        registry.register("zhihu", ZhihuAdapter)
+        registry.register("bilibili", BilibiliAdapter)
+        registry.register("xiaohongshu", XiaohongshuAdapter)
+
+        adapter = registry.get(platform, credentials)
+        if adapter and hasattr(adapter, 'upload_media'):
+            image_paths = [item.path for item in self.images if item.exists]
+            try:
+                uploaded = adapter.upload_media(image_paths)
+                results.update(uploaded or {})
+            except Exception as e:
+                results = {p: f"ERROR: {e}" for p in image_paths}
+
+        return results
+
     def get_summary(self) -> str:
         """获取媒体摘要信息.
 

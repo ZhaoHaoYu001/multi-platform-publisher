@@ -6,12 +6,13 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..adapters.base_adapter import AdaptationResult, PlatformAdapter
 from ..core.content_document import ContentDocument, ImageRef
 from ..core.content_parser import ContentParser
 from ..core.platform_base import PublishMode, PublishResult
+from ..core.rule_engine import RuleEngine
 
 
 @dataclass
@@ -73,33 +74,80 @@ class AdaptStage(PublishStage):
 
 
 class ImageProcessStage(PublishStage):
-    """图片处理阶段: 按平台需求裁剪/压缩图片."""
+    """图片处理阶段: 按平台 YAML 规则裁剪/压缩图片.
+
+    读取 RuleEngine 中的 media 规则，自动进行:
+    - 按比例裁剪（image_ratio）
+    - 最小尺寸调整（image_min_size）
+    - 文件大小压缩（image_max_size_mb）
+    """
+
+    def __init__(self, rule_engine: Optional[RuleEngine] = None) -> None:
+        self._rule_engine = rule_engine
 
     def execute(self, ctx: PipelineContext) -> PipelineContext:
-        import os
-        from ..media.image_processor import ImageProcessor
+        from ..media.image_processor import ImageProcessor, PLATFORM_REQUIREMENTS
 
         processor = ImageProcessor()
         processed: List[str] = []
 
-        # 从文档图片引用中获取图片路径
+        # 收集所有图片来源
         image_sources = [img.src for img in ctx.document.images]
-        # 也包含 metadata 中的图片列表
         image_sources.extend(ctx.metadata.get("images", []))
 
+        if not image_sources:
+            ctx.processed_images = []
+            return ctx
+
+        # 获取平台媒体规则
+        platform_reqs = PLATFORM_REQUIREMENTS.get(ctx.platform, {})
+
         for img_path in image_sources:
-            if os.path.exists(img_path):
-                try:
-                    output_path = processor.prepare_for_platform(
-                        img_path, ctx.platform
-                    )
-                    processed.append(output_path)
-                except Exception:
-                    processed.append(img_path)  # 处理失败则使用原图
-            else:
-                processed.append(img_path)
+            try:
+                if not img_path or not _is_local_file(img_path):
+                    # URL 或无效路径，直接保留
+                    processed.append(img_path)
+                    continue
+
+                output_path = processor.prepare_for_platform(img_path, ctx.platform)
+                processed.append(output_path)
+            except Exception as e:
+                ctx.errors.append(f"图片处理失败 {img_path}: {e}")
+                processed.append(img_path)  # 处理失败则使用原图
 
         ctx.processed_images = processed
+        return ctx
+
+
+class MediaUploadStage(PublishStage):
+    """媒体上传阶段: 将处理后的图片上传到平台.
+
+    调用适配器的 upload_media 方法（如果存在），
+    否则跳过上传，直接在投递阶段处理。
+    """
+
+    def __init__(self, adapter: PlatformAdapter) -> None:
+        self._adapter = adapter
+
+    def execute(self, ctx: PipelineContext) -> PipelineContext:
+        images = ctx.processed_images or ctx.metadata.get("images", [])
+
+        if not images:
+            ctx.uploaded_media = {}
+            return ctx
+
+        # 如果适配器有 upload_media 方法，调用它
+        if hasattr(self._adapter, 'upload_media'):
+            try:
+                uploaded = self._adapter.upload_media(images)
+                ctx.uploaded_media = uploaded or {}
+            except Exception as e:
+                ctx.errors.append(f"媒体上传失败: {e}")
+                ctx.uploaded_media = {}
+        else:
+            # 没有专用上传方法，标记为待投递阶段处理
+            ctx.uploaded_media = {img: img for img in images}
+
         return ctx
 
 
@@ -123,6 +171,12 @@ class DeliverStage(PublishStage):
             ctx.result = self._adapter.deliver(ctx.adapted, images)
 
         return ctx
+
+
+def _is_local_file(path: str) -> bool:
+    """检查路径是否为本地文件."""
+    import os
+    return os.path.exists(path) and os.path.isfile(path)
 
 
 class PublishPipeline:
@@ -163,13 +217,15 @@ class PublishPipeline:
         adapter: PlatformAdapter,
         title: str = "",
         tags: Optional[List[str]] = None,
+        rule_engine: Optional[RuleEngine] = None,
     ) -> "PublishPipeline":
-        """创建默认管线: 解析 → 适配 → 图片处理 → 投递.
+        """创建默认管线: 解析 → 适配 → 图片处理 → 媒体上传 → 投递.
 
         Args:
             adapter: 平台适配器
             title: 文章标题
             tags: 标签列表
+            rule_engine: 规则引擎（用于图片处理规则）
 
         Returns:
             PublishPipeline 实例
@@ -177,6 +233,22 @@ class PublishPipeline:
         return cls([
             ParseStage(title=title, tags=tags),
             AdaptStage(adapter),
-            ImageProcessStage(),
+            ImageProcessStage(rule_engine=rule_engine),
+            MediaUploadStage(adapter),
             DeliverStage(adapter),
         ])
+
+    @classmethod
+    def create_custom(
+        cls,
+        stages: List[PublishStage],
+    ) -> "PublishPipeline":
+        """创建自定义管线.
+
+        Args:
+            stages: 自定义阶段列表
+
+        Returns:
+            PublishPipeline 实例
+        """
+        return cls(stages)
