@@ -212,6 +212,8 @@ class XiaohongshuPlatform(PlatformBase):
     ) -> PublishResult:
         """执行小红书发布.
 
+        有API凭证时走API发布，无凭证时降级到RPA浏览器自动化发布。
+
         Args:
             title: 适配后的标题
             content: 适配后的内容（纯文本格式，含emoji和话题标签）
@@ -221,30 +223,30 @@ class XiaohongshuPlatform(PlatformBase):
         Returns:
             发布结果
         """
-        # 凭证检查
-        if not self.cookie:
-            return PublishResult(
-                success=False,
-                platform=self.name,
-                message="未配置小红书凭证（cookie）",
-            )
+        # 有凭证走API
+        if self.cookie:
+            return self._publish_via_api(title, content, images, **kwargs)
 
+        # 无凭证走RPA
+        return self._publish_via_rpa(title, content, images, **kwargs)
+
+    def _publish_via_api(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过API发布小红书笔记."""
         try:
             from ..api.xiaohongshu_api import XiaohongshuAPI
 
             api = XiaohongshuAPI(cookie=self.cookie)
 
-            # 上传图片
             image_urls = []
             for img_path in images:
                 url = api.upload_image(img_path)
                 if url:
                     image_urls.append(url)
 
-            # 提取话题标签
             topics = kwargs.get("topics", [])
 
-            # 发布
             result = api.create_and_publish(
                 title=title,
                 content=content,
@@ -262,7 +264,36 @@ class XiaohongshuPlatform(PlatformBase):
             return PublishResult(
                 success=False,
                 platform=self.name,
-                message=f"小红书发布异常: {e}",
+                message=f"小红书API发布失败: {e}",
+            )
+
+    def _publish_via_rpa(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过RPA浏览器自动化发布小红书笔记."""
+        try:
+            from ..rpa.xiaohongshu_rpa import XiaohongshuRPA
+
+            with XiaohongshuRPA() as rpa:
+                result = rpa.publish(title=title, content=content, images=images, **kwargs)
+
+            return PublishResult(
+                success=result.get("success", False),
+                platform=self.name,
+                message=result.get("message", "RPA发布完成"),
+                raw_response=result,
+            )
+        except ImportError:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未安装playwright，请运行: pip install playwright && playwright install chromium",
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"小红书RPA发布失败: {e}",
             )
 
     def check_login(self) -> bool:
