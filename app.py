@@ -61,7 +61,14 @@ class App:
             )
 
         # 知乎
-        self.platform_manager.register(ZhihuPlatform())
+        zhihu_username = os.getenv("ZHIHU_USERNAME")
+        zhihu_password = os.getenv("ZHIHU_PASSWORD")
+        if zhihu_username and zhihu_password:
+            self.platform_manager.register(
+                ZhihuPlatform(username=zhihu_username, password=zhihu_password)
+            )
+        else:
+            self.platform_manager.register(ZhihuPlatform())
 
         # B站
         bilibili_sess = os.getenv("BILIBILI_SESS_DATA")
@@ -70,9 +77,14 @@ class App:
             self.platform_manager.register(
                 BilibiliPlatform(sess_data=bilibili_sess, csrf=bilibili_csrf)
             )
-
+        else:
+            self.platform_manager.register(BilibiliPlatform())
         # 小红书
-        self.platform_manager.register(XiaohongshuPlatform())
+        xhs_cookie = os.getenv("XIAOHONGSHU_COOKIE")
+        if xhs_cookie:
+            self.platform_manager.register(XiaohongshuPlatform(cookie=xhs_cookie))
+        else:
+            self.platform_manager.register(XiaohongshuPlatform())
 
     def clear_screen(self) -> None:
         """清屏."""
@@ -405,6 +417,9 @@ class App:
         print("  WECHAT_APP_SECRET   - 微信公众号AppSecret")
         print("  BILIBILI_SESS_DATA  - B站SESSDATA")
         print("  BILIBILI_CSRF       - B站CSRF Token")
+        print("  ZHIHU_USERNAME      - 知乎用户名")
+        print("  ZHIHU_PASSWORD      - 知乎密码")
+        print("  XIAOHONGSHU_COOKIE  - 小红书Cookie")
         print()
         input("按回车返回...")
 

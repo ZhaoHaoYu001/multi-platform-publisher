@@ -86,6 +86,8 @@ class BilibiliPlatform(PlatformBase):
     ) -> PublishResult:
         """执行B站发布.
 
+        有API凭证时走API发布，无凭证时降级到RPA浏览器自动化发布。
+
         Args:
             title: 适配后的标题
             content: 适配后的内容（Markdown格式，会自动转BBCode）
@@ -95,20 +97,22 @@ class BilibiliPlatform(PlatformBase):
         Returns:
             发布结果
         """
-        # 检查凭证
-        if not self.sess_data:
-            return PublishResult(
-                success=False,
-                platform=self.name,
-                message="未配置B站凭证（sess_data）",
-            )
+        # 有凭证走API
+        if self.sess_data:
+            return self._publish_via_api(title, content, images, **kwargs)
 
+        # 无凭证走RPA
+        return self._publish_via_rpa(title, content, images, **kwargs)
+
+    def _publish_via_api(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过API发布B站专栏."""
         try:
             from ..api.bilibili_api import BilibiliAPI
 
             api = BilibiliAPI(sess_data=self.sess_data, csrf=self.csrf)
 
-            # 获取可选参数
             category = kwargs.get("category", 4)
             tags = kwargs.get("tags", "")
             summary = kwargs.get("summary", "")
@@ -129,12 +133,40 @@ class BilibiliPlatform(PlatformBase):
                 message=result.get("message", "发布完成"),
                 raw_response=result,
             )
-
         except Exception as e:
             return PublishResult(
                 success=False,
                 platform=self.name,
-                message=f"发布失败: {str(e)}",
+                message=f"B站API发布失败: {e}",
+            )
+
+    def _publish_via_rpa(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过RPA浏览器自动化发布B站专栏."""
+        try:
+            from ..rpa.bilibili_rpa import BilibiliRPA
+
+            with BilibiliRPA() as rpa:
+                result = rpa.publish(title=title, content=content, images=images, **kwargs)
+
+            return PublishResult(
+                success=result.get("success", False),
+                platform=self.name,
+                message=result.get("message", "RPA发布完成"),
+                raw_response=result,
+            )
+        except ImportError:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未安装playwright，请运行: pip install playwright && playwright install chromium",
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"B站RPA发布失败: {e}",
             )
 
     def check_login(self) -> bool:

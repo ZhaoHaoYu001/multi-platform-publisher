@@ -41,7 +41,6 @@ class ZhihuPlatform(PlatformBase):
         super().__init__()
         self.username = username
         self.password = password
-        self._cookie: str = ""
 
     def adapt_content(self, content: str) -> str:
         """适配内容为知乎Markdown格式.
@@ -80,6 +79,8 @@ class ZhihuPlatform(PlatformBase):
     ) -> PublishResult:
         """执行知乎发布.
 
+        有API凭证时走API发布，无凭证时降级到RPA浏览器自动化发布。
+
         Args:
             title: 适配后的标题
             content: 适配后的内容（Markdown格式）
@@ -89,27 +90,28 @@ class ZhihuPlatform(PlatformBase):
         Returns:
             发布结果
         """
-        # 凭证检查
-        if not self.username or not self.password:
-            return PublishResult(
-                success=False,
-                platform=self.name,
-                message="未配置知乎凭证（username/password）",
-            )
+        # 有凭证走API
+        if self.username and self.password:
+            return self._publish_via_api(title, content, images, **kwargs)
 
+        # 无凭证走RPA
+        return self._publish_via_rpa(title, content, images, **kwargs)
+
+    def _publish_via_api(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过API发布知乎文章."""
         try:
             from ..api.zhihu_api import ZhihuAPI
 
             api = ZhihuAPI(username=self.username, password=self.password)
 
-            # 上传图片
             image_urls = []
             for img_path in images:
                 url = api.upload_image(img_path)
                 if url:
                     image_urls.append(url)
 
-            # 发布
             result = api.create_and_publish(
                 title=title,
                 content=content,
@@ -126,7 +128,36 @@ class ZhihuPlatform(PlatformBase):
             return PublishResult(
                 success=False,
                 platform=self.name,
-                message=f"知乎发布异常: {e}",
+                message=f"知乎API发布失败: {e}",
+            )
+
+    def _publish_via_rpa(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过RPA浏览器自动化发布知乎文章."""
+        try:
+            from ..rpa.zhihu_rpa import ZhihuRPA
+
+            with ZhihuRPA() as rpa:
+                result = rpa.publish(title=title, content=content, images=images, **kwargs)
+
+            return PublishResult(
+                success=result.get("success", False),
+                platform=self.name,
+                message=result.get("message", "RPA发布完成"),
+                raw_response=result,
+            )
+        except ImportError:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未安装playwright，请运行: pip install playwright && playwright install chromium",
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"知乎RPA发布失败: {e}",
             )
 
     def check_login(self) -> bool:
@@ -147,9 +178,20 @@ class ZhihuPlatform(PlatformBase):
             return False
 
     def login(self) -> bool:
-        """知乎登录（委托 check_login）.
+        """知乎登录.
+
+        使用用户名密码执行登录操作。
 
         Returns:
             登录是否成功
         """
-        return self.check_login()
+        if not self.username or not self.password:
+            return False
+
+        try:
+            from ..api.zhihu_api import ZhihuAPI
+
+            api = ZhihuAPI(username=self.username, password=self.password)
+            return api.login()
+        except Exception:
+            return False
