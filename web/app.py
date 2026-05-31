@@ -1,4 +1,4 @@
-﻿"""Web management panel with create_app() factory."""
+"""Web management panel with create_app() factory."""
 
 import json, os, sys, uuid
 from datetime import datetime
@@ -30,6 +30,8 @@ from src.pipeline.publish_pipeline import (
     ParseStage, PipelineContext, PublishPipeline,
 )
 from src.review.previewer import Previewer
+from src.ai.mimo_client import MiMoClient
+from src.ai.content_generator import ContentGenerator
 
 
 RPA_LOGIN_PLATFORMS = {
@@ -57,6 +59,10 @@ def create_app():
     credential_store = CredentialStore()
     credential_store.load_from_env()
 
+    # 初始化 AI 内容生成器
+    mimo_client = MiMoClient()
+    content_generator = ContentGenerator(client=mimo_client)
+
     for cls in [WechatAdapter, ZhihuAdapter, BilibiliAdapter, XiaohongshuAdapter, DouyinAdapter, WeiboAdapter]:
         registry.register(cls.platform_name, cls)
 
@@ -65,13 +71,15 @@ def create_app():
 
     # Register routes
     _register_routes(app, registry, rule_engine, draft_manager, previewer,
-                     task_queue, image_processor, scheduler, credential_store, _creds)
+                     task_queue, image_processor, scheduler, credential_store, _creds,
+                     content_generator)
 
     return app
 
 
 def _register_routes(app, registry, rule_engine, draft_manager, previewer,
-                      task_queue, image_processor, scheduler, credential_store, _creds):
+                      task_queue, image_processor, scheduler, credential_store, _creds,
+                      content_generator=None):
     """Register all routes."""
 
     BUILTIN_TEMPLATES = [
@@ -176,6 +184,7 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         images = data.get("images", [])
         platforms = data.get("platforms", [])
         mode = PublishMode.REAL if data.get("real", False) else PublishMode.SIMULATE
+        adapted_contents = data.get("adapted_contents", {})  # 预适配的内容 {platform: {title, content}}
 
         credentials = _creds()
         results = {}
@@ -191,23 +200,49 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             task_queue.update_status(task_id, "publishing")
 
             try:
-                pipeline = PublishPipeline.create_default(
-                    adapter=adapter,
-                    title=title,
-                    tags=tags.split(",") if tags else None,
-                )
-                ctx = PipelineContext(
-                    metadata={
-                        "raw_content": content,
-                        "title": title,
-                        "tags": tags.split(",") if tags else [],
-                        "images": images,
-                        "mode": mode,
-                    },
-                    platform=platform_name,
-                )
-                ctx = pipeline.execute(ctx)
-
+                # 如果提供了预适配内容，直接使用；否则走完整 pipeline
+                if platform_name in adapted_contents:
+                    adapted = adapted_contents[platform_name]
+                    adapted_title = adapted.get("title", title)
+                    adapted_content = adapted.get("content", content)
+                    # 构造 AdaptationResult 用于投递
+                    from src.adapters.base_adapter import AdaptationResult
+                    adapted_result = AdaptationResult(
+                        title=adapted_title,
+                        content=adapted_content,
+                        warnings=[],
+                    )
+                    if mode == PublishMode.SIMULATE:
+                        result = adapter._simulate(adapted_result)
+                    else:
+                        result = adapter.deliver(adapted_result, images)
+                    results[platform_name] = {
+                        "success": result.success,
+                        "message": result.message,
+                        "url": result.url,
+                        "task_id": task_id,
+                    }
+                    status = "success" if result.success else "failed"
+                    task_queue.update_status(task_id, status, result=result)
+                    continue
+                else:
+                    pipeline = PublishPipeline.create_default(
+                        adapter=adapter,
+                        title=title,
+                        tags=tags.split(",") if tags else None,
+                    )
+                    ctx = PipelineContext(
+                        metadata={
+                            "raw_content": content,
+                            "title": title,
+                            "tags": tags.split(",") if tags else [],
+                            "images": images,
+                            "mode": mode,
+                        },
+                        platform=platform_name,
+                    )
+                    ctx = pipeline.execute(ctx)
+    
                 if ctx.result:
                     results[platform_name] = {
                         "success": ctx.result.success,
@@ -526,7 +561,73 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
     def scheduler_status():
         """获取调度器状态."""
         return jsonify({"success": True, "status": scheduler.get_status()})
+    
+    
+    # ──────────────────── AI 内容生成 API ────────────────────
 
+    @app.route("/api/ai/generate", methods=["POST"])
+    def ai_generate():
+        """AI 一句话生成完整文案."""
+        if content_generator is None or not content_generator.is_available:
+            return jsonify({
+                "success": False,
+                "error": "AI 生成功能不可用，请检查 MIMO_API_KEY 配置",
+            }), 503
+
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"success": False, "error": "请输入内容描述"}), 400
+
+        style = data.get("style", "general")
+        target_platform = data.get("platform")
+        title = data.get("title")
+
+        try:
+            result = content_generator.generate(
+                prompt=prompt,
+                style=style,
+                target_platform=target_platform,
+                title=title,
+            )
+            return jsonify({
+                "success": True,
+                "title": result.title,
+                "content": result.content,
+                "tags": result.tags,
+                "summary": result.summary,
+                "style": result.style,
+                "platform": result.target_platform,
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @app.route("/api/ai/styles", methods=["GET"])
+    def ai_styles():
+        """获取 AI 支持的内容风格列表."""
+        return jsonify({
+            "success": True,
+            "styles": content_generator.list_styles() if content_generator else {},
+        })
+
+    @app.route("/api/ai/platforms", methods=["GET"])
+    def ai_platforms():
+        """获取 AI 支持的平台特性列表."""
+        return jsonify({
+            "success": True,
+            "platforms": content_generator.list_platforms() if content_generator else {},
+        })
+
+    @app.route("/api/ai/status", methods=["GET"])
+    def ai_status():
+        """检查 AI 功能状态."""
+        available = content_generator is not None and content_generator.is_available
+        return jsonify({
+            "success": True,
+            "available": available,
+            "has_api_key": bool(os.getenv("MIMO_API_KEY")),
+            "has_base_url": bool(os.getenv("MIMO_BASE_URL")),
+        })
 
     # ──────────────────── 凭证 API ────────────────────
 
