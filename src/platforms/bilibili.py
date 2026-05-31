@@ -97,11 +97,8 @@ class BilibiliPlatform(PlatformBase):
         """
         # 检查凭证
         if not self.sess_data:
-            return PublishResult(
-                success=False,
-                platform=self.name,
-                message="未配置B站凭证（sess_data）",
-            )
+            # 无API凭证，回退到RPA浏览器自动化
+            return self._do_publish_rpa(title, content, images, **kwargs)
 
         try:
             from ..api.bilibili_api import BilibiliAPI
@@ -135,6 +132,55 @@ class BilibiliPlatform(PlatformBase):
                 success=False,
                 platform=self.name,
                 message=f"发布失败: {str(e)}",
+            )
+
+    def _do_publish_rpa(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过RPA浏览器自动化发布B站专栏.
+
+        Args:
+            title: 标题
+            content: 内容
+            images: 图片列表
+            **kwargs: 其他参数
+
+        Returns:
+            发布结果
+        """
+        try:
+            from ..rpa.bilibili_rpa import BilibiliRPA
+
+            rpa = BilibiliRPA(headless=False)
+            tags = kwargs.get("tags", [])
+            if isinstance(tags, str):
+                tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+            result = rpa.publish(
+                title=title,
+                content=content,
+                images=images,
+                tags=tags,
+                save_as_draft=kwargs.get("save_as_draft", True),
+            )
+
+            return PublishResult(
+                success=result["success"],
+                platform=self.name,
+                message=result["message"],
+                raw_response=result,
+            )
+        except ImportError:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="RPA发布需要安装playwright: pip install playwright && playwright install chromium",
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"RPA发布异常: {e}",
             )
 
     def check_login(self) -> bool:

@@ -1,351 +1,124 @@
 # Multi-Platform Publisher
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Tests](https://img.shields.io/badge/tests-180%2B-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/ZhaoHaoYu001/multi-platform-publisher/releases)
+题目二：多平台内容发布工具。用户输入一份内容后，系统自动适配微信公众号、知乎、B站、小红书等平台的格式与风格，并支持一键模拟发布或真实发布。
 
-一个功能完整的多平台内容发布Python工具，支持微信公众号、知乎、B站、小红书等平台的一键发布。
+## 当前开发阶段
 
-## ✨ 功能特性
+本次检查时间：2026-05-31。
 
-- 🚀 **一键多平台发布** - 同时发布到微信公众号、知乎、B站、小红书
-- 📝 **内容自适应** - 自动适配各平台的标题长度、内容格式限制
-- 🖼️ **媒体处理** - 支持图片和视频的上传、裁剪、压缩
-- 📁 **草稿管理** - 支持草稿保存、版本管理和导出
-- 👁️ **发布预览** - 发布前预览各平台的最终效果
-- 🔌 **可扩展架构** - 轻松添加新平台支持
-- 💻 **双重界面** - 交互式程序 + 命令行工具
+当前项目已经进入“可演示的功能完善阶段”：
 
-## 📊 支持平台
+- 已有平台抽象层：`PlatformBase` 统一标题、正文、图片校验和发布模式。
+- 已支持 4 个核心平台：微信公众号、知乎、B站专栏、小红书。
+- 已具备自动适配能力：不同平台有不同标题长度、正文长度、内容类型和格式转换规则。
+- 已具备发布能力：默认支持模拟发布，配置凭证后可走 API；部分平台在无 API 凭证时可回退到 Playwright RPA。
+- 已具备 Web 演示链路：输入内容、选择平台、生成适配预览、保存草稿、一键发布。
+- 已具备扩展基础：新增平台可以通过平台类、平台目录配置和 Web 注册信息接入。
 
-| 平台 | 状态 | 标题限制 | 内容限制 | 图片限制 | 内容类型 | 特殊处理 |
-|------|------|----------|----------|----------|----------|----------|
-| 微信公众号 | ✅ | 64字 | 20000字 | 10张 | 富文本 | Markdown→HTML |
-| 知乎 | ✅ | 60字 | 20000字 | 30张 | Markdown | 代码块语言标注 |
-| B站 | ✅ | 80字 | 15000字 | 100张 | 富文本 | Markdown→BBCode |
-| 小红书 | ✅ | 20字 | 1000字 | 9张 | 纯文本 | 自动emoji+话题标签 |
+远端 GitHub `main` 分支已经推进到更完整的 v2 架构方向，包含规则引擎、适配器注册、发布管线、任务队列、定时发布、模板系统、抖音/微博扩展等。当前工作区仍在 `feat/rpa-publish` 分支上，并保留了本地未提交的 RPA/Web 修改；本次改动优先补齐题目要求的演示闭环。
 
-## 🚀 快速开始
+## 功能对应题目要求
 
-### 安装
+| 题目要求 | 项目实现 |
+| --- | --- |
+| 用户输入内容 | Web 面板提供标题、正文、标签输入 |
+| 自动适配各平台格式与风格 | 每个平台实现 `adapt_title`、`adapt_content`、图片数量限制和内容类型 |
+| 一键发布 | Web 面板可勾选多个平台并一次提交 |
+| 可选模拟发布 | Web 默认“模拟发布”，不会调用真实平台接口 |
+| 扩展更多平台架构设计 | `src/core/platform_catalog.py` + `src/platforms/*` + `PlatformManager` |
+
+## 快速开始
 
 ```bash
-# 克隆仓库
-git clone https://github.com/ZhaoHaoYu001/multi-platform-publisher.git
-cd multi-platform-publisher
-
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# 或
-venv\Scripts\activate  # Windows
-
-# 安装依赖
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
+python web/app.py
 ```
 
-### 配置
+访问：
+
+```text
+http://localhost:5000
+```
+
+命令行模拟发布：
 
 ```bash
-# 复制环境变量模板
-cp .env.example .env
-
-# 编辑 .env 文件，填入你的平台凭证
+python publish.py -t "我的文章标题" -c "这里是 Markdown 正文" -p wechat,zhihu,bilibili,xiaohongshu
 ```
 
-`.env` 文件配置示例：
+真实发布需要先配置 `.env`：
 
 ```env
-# 微信公众号
 WECHAT_APP_ID=your_app_id
 WECHAT_APP_SECRET=your_app_secret
-
-# B站
+ZHIHU_USERNAME=your_username
+ZHIHU_PASSWORD=your_password
 BILIBILI_SESS_DATA=your_sess_data
 BILIBILI_CSRF=your_csrf
+XIAOHONGSHU_COOKIE=your_cookie
 ```
 
-## 📖 详细使用教程
+请勿把 token、cookie、密码提交到仓库。
 
-### 方式一：交互式程序
+## 平台适配策略
 
-运行交互式程序，通过菜单操作：
+| 平台 | 标题限制 | 正文限制 | 图片限制 | 内容类型 | 风格适配 |
+| --- | ---: | ---: | ---: | --- | --- |
+| 微信公众号 | 64 | 20000 | 10 | 富文本 | Markdown 转 HTML，保留图文排版 |
+| 知乎 | 60 | 20000 | 30 | Markdown | 保留知识型长文结构，代码块补默认语言 |
+| B站专栏 | 80 | 15000 | 100 | 富文本 | 标题强化、分割线转换、社区化专栏格式 |
+| 小红书 | 20 | 1000 | 9 | 纯文本 | Markdown 转纯文本，自动加入话题和口吻 |
 
-```bash
-python app.py
+## Web 演示流程
+
+1. 输入标题、正文和标签。
+2. 选择目标平台。
+3. 点击“生成适配预览”，查看每个平台的标题、正文和限制提醒。
+4. 默认保持“模拟发布”，点击“一键发布”查看发布结果。
+5. 如需真实发布，配置凭证后切换为“真实发布”。
+
+## 架构设计
+
+```text
+Web/CLI
+  |
+  v
+PlatformManager
+  |
+  +-- PlatformBase
+      |
+      +-- WechatPlatform
+      +-- ZhihuPlatform
+      +-- BilibiliPlatform
+      +-- XiaohongshuPlatform
+  |
+  +-- platform_catalog.py
+      |
+      +-- 平台展示信息
+      +-- 凭证环境变量
+      +-- 平台实例构造
 ```
 
-菜单选项：
-```
-1. 编辑内容（标题/正文/标签）
-2. 管理媒体（添加/删除/说明/排序）
-3. 预览效果
-4. 选择平台并发布
-5. 草稿管理
-6. 帮助
-0. 保存并退出
-```
+核心接口：
 
-### 方式二：命令行工具
+- `adapt_title(title)`：按平台标题限制裁剪或风格化。
+- `adapt_content(content)`：把 Markdown 转换为平台需要的内容形态。
+- `validate_images(images)`：检查图片数量与平台限制。
+- `publish(..., mode=PublishMode.SIMULATE)`：统一发布入口。
+- `_do_publish(...)`：平台真实发布实现，可走 API 或 RPA。
 
-使用命令行快速发布：
+## 扩展新平台
 
-```bash
-# 模拟发布到所有平台
-python publish.py -t "我的文章标题" -c "文章内容"
+新增平台建议按以下步骤：
 
-# 从文件读取内容
-python publish.py -t "标题" -f article.md
+1. 在 `src/platforms/` 新建平台类，继承 `PlatformBase`。
+2. 设置 `name`、`max_title_length`、`max_content_length`、`max_images`、`content_type`。
+3. 实现 `adapt_content`，处理该平台的格式和风格。
+4. 实现 `_do_publish`，支持 API 发布；没有开放 API 时可新增 RPA fallback。
+5. 在 `src/core/platform_catalog.py` 注册平台展示信息和凭证环境变量。
+6. 在 Web 或 CLI 的平台列表中暴露该平台。
+7. 为标题截断、正文适配、图片限制、模拟发布添加测试。
 
-# 指定平台发布
-python publish.py -t "标题" -c "内容" -p wechat,zhihu
-
-# 真实发布
-python publish.py -t "标题" -c "内容" --real
-
-# 带图片发布
-python publish.py -t "标题" -c "内容" -i image1.jpg image2.jpg
-
-# 详细输出
-python publish.py -t "标题" -c "内容" -v
-```
-
-### 方式三：Python API
-
-在代码中使用：
-
-```python
-from src.core.platform_manager import PlatformManager
-from src.core.platform_base import PublishMode
-from src.platforms.wechat import WechatPlatform
-from src.platforms.zhihu import ZhihuPlatform
-from src.platforms.bilibili import BilibiliPlatform
-from src.platforms.xiaohongshu import XiaohongshuPlatform
-
-# 创建管理器并注册平台
-manager = PlatformManager()
-manager.register(WechatPlatform(app_id="xxx", app_secret="xxx"))
-manager.register(ZhihuPlatform())
-manager.register(BilibiliPlatform(sess_data="xxx"))
-manager.register(XiaohongshuPlatform())
-
-# 发布内容
-results = manager.publish_to_all(
-    title="Python异步编程入门",
-    content=open("article.md").read(),
-    images=["cover.jpg"],
-    mode=PublishMode.SIMULATE,  # 先模拟
-)
-
-# 查看结果
-print(manager.get_summary(results))
-```
-
-### 媒体处理
-
-```python
-from src.media.image_processor import ImageProcessor, AspectRatio
-
-processor = ImageProcessor()
-
-# 获取图片信息
-info = processor.get_image_info("photo.jpg")
-print(info)  # 1920x1080 JPEG 2.50MB RGB
-
-# 裁剪为正方形
-processor.crop_to_ratio("photo.jpg", "square.jpg", AspectRatio.SQUARE)
-
-# 压缩图片
-processor.compress_image("large.jpg", "small.jpg", max_size_mb=1.0)
-
-# 为平台自动处理
-processor.prepare_for_platform("photo.jpg", "wechat", "wechat_ready.jpg")
-```
-
-### 草稿管理
-
-```python
-from src.draft.draft_manager import DraftManager
-
-draft_mgr = DraftManager()
-
-# 创建并保存草稿
-draft = draft_mgr.new_draft(
-    title="我的文章",
-    content="# 标题\n\n内容...",
-    tags=["Python", "教程"],
-    category="技术",
-)
-draft_mgr.save_current(draft)
-
-# 列出所有草稿
-drafts = draft_mgr.list_drafts()
-
-# 导出为Markdown
-draft_mgr.export(draft.id, "output.md")
-```
-
-### 生成预览
-
-```python
-from src.review.previewer import Previewer
-
-previewer = Previewer()
-
-# 生成所有平台预览
-results = previewer.generate_all_previews(
-    title="文章标题",
-    content="# 内容\n\n正文...",
-    tags=["话题"],
-)
-
-print(results)
-# {'wechat': 'previews/wechat_preview.html', ...}
-```
-
-## 🏗️ 项目架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      用户界面层                              │
-│  ┌─────────────────┐  ┌──────────────────────────────────┐  │
-│  │   app.py        │  │   publish.py                     │  │
-│  │   (交互式程序)   │  │   (命令行工具)                    │  │
-│  └────────┬────────┘  └───────────────┬──────────────────┘  │
-│           │                           │                     │
-├───────────┼───────────────────────────┼─────────────────────┤
-│           │       核心业务层          │                     │
-│  ┌────────▼───────────────────────────▼──────────────────┐  │
-│  │              PlatformManager                          │  │
-│  │              (平台管理器)                              │  │
-│  └────────┬──────────────────────────────────────────────┘  │
-│           │                                                 │
-│  ┌────────▼────────┐  ┌─────────────┐  ┌────────────────┐  │
-│  │  PlatformBase   │  │  DraftMgr   │  │  Previewer     │  │
-│  │  (平台基类)     │  │  (草稿管理)  │  │  (预览系统)    │  │
-│  └────────┬────────┘  └─────────────┘  └────────────────┘  │
-│           │                                                 │
-├───────────┼─────────────────────────────────────────────────┤
-│           │         平台实现层                              │
-│  ┌────────┼───────────────────────────────────────────┐    │
-│  │        │                                           │    │
-│  │  ┌─────▼─────┐  ┌────────┐  ┌──────────┐  ┌──────┐│    │
-│  │  │  Wechat   │  │ Zhihu  │  │ Bilibili │  │ XHS  ││    │
-│  │  │ 微信公众号 │  │  知乎  │  │   B站    │  │小红书 ││    │
-│  │  └─────┬─────┘  └───┬────┘  └────┬─────┘  └──┬───┘│    │
-│  │        │            │            │            │     │    │
-│  └────────┼────────────┼────────────┼────────────┼─────┘    │
-│           │            │            │            │          │
-├───────────┼────────────┼────────────┼────────────┼──────────┤
-│           │            │            │            │          │
-│  ┌────────▼────────┐   │   ┌────────▼────────┐   │          │
-│  │  ImageProcessor │   │   │ VideoProcessor  │   │          │
-│  │  (图片处理器)   │   │   │ (视频处理器)    │   │          │
-│  └─────────────────┘   │   └─────────────────┘   │          │
-│                        │                         │          │
-├────────────────────────┼─────────────────────────┼──────────┤
-│                        │       API层             │          │
-│  ┌─────────────────────▼─────────────────────────▼───────┐  │
-│  │     WechatAPI              BilibiliAPI                 │  │
-│  │     (微信API)              (B站API)                    │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📁 项目结构
-
-```
-multi-platform-publisher/
-├── app.py                    # 交互式主程序
-├── publish.py                # 命令行工具
-├── src/
-│   ├── core/                 # 核心模块
-│   │   ├── platform_base.py  # 平台基类、枚举、数据类
-│   │   └── platform_manager.py # 平台管理器
-│   ├── platforms/            # 平台实现
-│   │   ├── wechat.py         # 微信公众号
-│   │   ├── zhihu.py          # 知乎
-│   │   ├── bilibili.py       # B站
-│   │   └── xiaohongshu.py    # 小红书
-│   ├── api/                  # API接口
-│   │   ├── wechat_api.py     # 微信API
-│   │   └── bilibili_api.py   # B站API
-│   ├── media/                # 媒体处理
-│   │   ├── image_processor.py # 图片处理器
-│   │   ├── video_processor.py # 视频处理器
-│   │   └── media_manager.py  # 媒体管理器
-│   ├── draft/                # 草稿管理
-│   │   └── draft_manager.py  # 草稿管理器
-│   └── review/               # 预览系统
-│       └── previewer.py      # 预览生成器
-├── tests/                    # 测试文件
-├── examples/                 # 示例文件
-├── requirements.txt          # 依赖列表
-├── .env.example              # 环境变量模板
-└── README.md                 # 本文档
-```
-
-## 🧪 测试
-
-```bash
-# 运行所有测试
-pytest tests/
-
-# 运行特定测试
-pytest tests/test_platform_base.py
-
-# 带覆盖率
-pytest tests/ --cov=src
-```
-
-## 🛠️ 开发指南
-
-### 分支规范
-
-- `main` - 主分支，始终保持可运行状态
-- `feature/xxx` - 功能开发分支
-- `fix/xxx` - Bug修复分支
-- `docs/xxx` - 文档更新分支
-
-### 提交规范
-
-```
-feat: 添加新功能
-fix: 修复bug
-docs: 文档更新
-style: 代码格式调整
-refactor: 重构
-test: 测试相关
-chore: 构建/工具链相关
-```
-
-### 代码规范
-
-- 符合PEP8规范
-- 添加类型注解
-- 添加完整的docstring
-- 每个功能都有对应的测试
-
-## 🤝 贡献
-
-欢迎提交Pull Request！请确保：
-1. 每个PR只做一件事
-2. 所有代码符合PEP8规范
-3. 添加类型注解和docstring
-4. 提交前运行测试
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 🙏 致谢
-
-感谢所有贡献者和以下开源项目：
-- [Pillow](https://python-pillow.org/) - 图片处理
-- [requests](https://requests.readthedocs.io/) - HTTP请求
-- [markdown](https://python-markdown.github.io/) - Markdown处理
-- [python-dotenv](https://github.com/theskumar/python-dotenv) - 环境变量管理
+这样扩展抖音、微博、今日头条等平台时，不需要改动发布主流程，只要新增平台实现并注册即可。

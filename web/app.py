@@ -1,191 +1,301 @@
-"""Web管理面板.
+"""Flask web panel for composing, adapting, and publishing content."""
 
-基于Flask的内容管理和多平台发布Web界面。
-"""
-
-import json
 import os
 import sys
+from typing import Dict, List
 
-# 将项目根目录加入路径
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from flask import Flask, jsonify, render_template, request
 
-from src.core.platform_base import PublishMode
-from src.core.platform_manager import PlatformManager
+from src.core.platform_base import PublishMode, PublishResult
+from src.core.platform_catalog import (
+    PLATFORM_CATALOG,
+    build_platform_manager,
+    get_platform_catalog,
+    is_credentials_ready,
+)
 from src.draft.draft_manager import DraftManager
-from src.platforms.bilibili import BilibiliPlatform
-from src.platforms.wechat import WechatPlatform
-from src.platforms.xiaohongshu import XiaohongshuPlatform
-from src.platforms.zhihu import ZhihuPlatform
-from src.review.previewer import Previewer
 
 app = Flask(__name__)
 
-# 初始化草稿管理器
-draft_manager = DraftManager(storage_dir=os.path.join(os.path.dirname(__file__), "..", "drafts"))
-previewer = Previewer()
+draft_manager = DraftManager(
+    drafts_dir=os.path.join(os.path.dirname(__file__), "..", "drafts")
+)
 
 
-def get_platform_manager() -> PlatformManager:
-    """根据环境变量初始化平台管理器."""
-    from dotenv import load_dotenv
+def get_platform_manager():
+    """Create a manager with every supported platform registered."""
 
-    load_dotenv()
+    return build_platform_manager()
 
-    manager = PlatformManager()
 
-    # 微信
-    wechat_id = os.getenv("WECHAT_APP_ID", "")
-    wechat_secret = os.getenv("WECHAT_APP_SECRET", "")
-    if wechat_id and wechat_secret:
-        manager.register(WechatPlatform(app_id=wechat_id, app_secret=wechat_secret))
+def _payload() -> Dict:
+    return request.get_json(silent=True) or {}
 
-    # 知乎
-    zhihu_user = os.getenv("ZHIHU_USERNAME", "")
-    zhihu_pass = os.getenv("ZHIHU_PASSWORD", "")
-    manager.register(ZhihuPlatform(username=zhihu_user, password=zhihu_pass))
 
-    # B站
-    sess_data = os.getenv("BILIBILI_SESS_DATA", "")
-    csrf = os.getenv("BILIBILI_CSRF", "")
-    manager.register(BilibiliPlatform(sess_data=sess_data, csrf=csrf))
+def _parse_tags(value) -> List[str]:
+    if isinstance(value, list):
+        return [str(tag).strip() for tag in value if str(tag).strip()]
+    return [tag.strip() for tag in str(value or "").split(",") if tag.strip()]
 
-    # 小红书
-    xhs_cookie = os.getenv("XIAOHONGSHU_COOKIE", "")
-    manager.register(XiaohongshuPlatform(cookie=xhs_cookie))
 
-    return manager
+def _selected_platforms(data: Dict, manager) -> List[str]:
+    requested = data.get("platforms") or manager.platforms
+    return [name for name in requested if name in PLATFORM_CATALOG]
+
+
+def _adapt_preview(platform, title: str, content: str, images: List[str]) -> Dict:
+    adapted_title = platform.adapt_title(title)
+    adapted_content = platform.adapt_content(content)
+    warnings = []
+
+    if adapted_title != title:
+        warnings.append(
+            f"标题已按 {platform.max_title_length} 字限制自动截断。"
+        )
+    if adapted_content != content and len(content) > platform.max_content_length:
+        warnings.append(
+            f"正文已按 {platform.max_content_length} 字限制自动截断。"
+        )
+
+    try:
+        platform.validate_images(images)
+    except ValueError as exc:
+        warnings.append(str(exc))
+
+    return {
+        "title": adapted_title,
+        "content": adapted_content,
+        "content_length": len(adapted_content),
+        "max_title_length": platform.max_title_length,
+        "max_content_length": platform.max_content_length,
+        "max_images": platform.max_images,
+        "content_type": platform.content_type,
+        "warnings": warnings,
+    }
+
+
+def _result_payload(result: PublishResult) -> Dict:
+    return {
+        "success": result.success,
+        "platform": result.platform,
+        "message": result.message,
+        "url": result.url,
+        "published_at": result.published_at.isoformat(),
+        "raw_response": result.raw_response,
+    }
 
 
 @app.route("/")
 def index():
-    """首页 - 内容编辑."""
     return render_template("index.html")
+
+
+@app.route("/api/platforms", methods=["GET"])
+def list_platforms():
+    manager = get_platform_manager()
+    platforms = []
+
+    for item in get_platform_catalog():
+        platform = manager.get_platform(item.name)
+        platforms.append(
+            {
+                "name": item.name,
+                "display_name": item.display_name,
+                "summary": item.summary,
+                "style": item.style,
+                "credential_env": list(item.credential_env),
+                "has_credentials": is_credentials_ready(item.name),
+                "supports_rpa": item.supports_rpa,
+                "max_title_length": platform.max_title_length if platform else None,
+                "max_content_length": platform.max_content_length if platform else None,
+                "max_images": platform.max_images if platform else None,
+                "content_type": platform.content_type if platform else "",
+            }
+        )
+
+    return jsonify({"success": True, "platforms": platforms})
 
 
 @app.route("/api/preview", methods=["POST"])
 def preview():
-    """预览各平台格式."""
-    data = request.json
+    data = _payload()
     title = data.get("title", "")
     content = data.get("content", "")
+    images = data.get("images", []) or []
 
+    manager = get_platform_manager()
     previews = {}
-    for platform_name in ["wechat", "zhihu", "bilibili", "xiaohongshu"]:
-        html = previewer.generate_preview(title=title, content=content, platform=platform_name)
-        previews[platform_name] = html
+
+    for platform_name in _selected_platforms(data, manager):
+        platform = manager.get_platform(platform_name)
+        if platform is None:
+            previews[platform_name] = {"error": "平台未注册"}
+            continue
+        previews[platform_name] = _adapt_preview(platform, title, content, images)
 
     return jsonify({"success": True, "previews": previews})
 
 
 @app.route("/api/publish", methods=["POST"])
 def publish():
-    """发布到选中平台."""
-    data = request.json
+    data = _payload()
     title = data.get("title", "")
     content = data.get("content", "")
-    images = data.get("images", [])
-    platforms = data.get("platforms", [])
+    images = data.get("images", []) or []
+    tags = _parse_tags(data.get("tags", ""))
+    mode_value = str(data.get("mode", "simulate")).lower()
+    real_requested = data.get("real", False) or mode_value == "real"
+    mode = PublishMode.REAL if real_requested else PublishMode.SIMULATE
 
     manager = get_platform_manager()
-
     results = {}
-    for platform_name in platforms:
+
+    for platform_name in _selected_platforms(data, manager):
         platform = manager.get_platform(platform_name)
-        if platform:
-            result = platform.publish(
-                title=title,
-                content=content,
-                images=images,
-                mode=PublishMode.REAL,
-            )
-            results[platform_name] = {
-                "success": result.success,
-                "message": result.message,
-                "url": result.url,
-            }
-        else:
+        if platform is None:
             results[platform_name] = {
                 "success": False,
-                "message": f"平台 {platform_name} 未配置",
+                "message": "平台未注册",
             }
+            continue
 
-    return jsonify({"success": True, "results": results})
+        result = platform.publish(
+            title=title,
+            content=content,
+            images=images,
+            mode=mode,
+            tags=",".join(tags),
+            save_as_draft=True,
+        )
+        results[platform_name] = _result_payload(result)
+
+    return jsonify(
+        {
+            "success": True,
+            "mode": mode.value,
+            "results": results,
+        }
+    )
 
 
 @app.route("/api/drafts", methods=["GET"])
 def list_drafts():
-    """获取草稿列表."""
     drafts = draft_manager.list_drafts()
-    return jsonify({
-        "success": True,
-        "drafts": [
-            {
-                "id": d.id,
-                "title": d.content.title,
-                "updated_at": d.updated_at.isoformat() if d.updated_at else None,
-            }
-            for d in drafts
-        ],
-    })
+    return jsonify(
+        {
+            "success": True,
+            "drafts": [
+                {
+                    "id": draft.get("id", ""),
+                    "title": draft.get("title", ""),
+                    "updated_at": draft.get("updated_at"),
+                }
+                for draft in drafts
+            ],
+        }
+    )
 
 
 @app.route("/api/drafts", methods=["POST"])
 def save_draft():
-    """保存草稿."""
-    data = request.json
-    title = data.get("title", "")
-    content = data.get("content", "")
-    tags = data.get("tags", "")
-
-    draft = draft_manager.new_draft(title=title, content=content)
-    if tags:
-        draft.content.tags = tags
-    draft_manager.save_draft(draft)
-
+    data = _payload()
+    draft = draft_manager.new_draft(
+        title=data.get("title", ""),
+        content=data.get("content", ""),
+        tags=_parse_tags(data.get("tags", "")),
+    )
+    draft_manager.save_current(draft)
     return jsonify({"success": True, "draft_id": draft.id})
 
 
 @app.route("/api/drafts/<draft_id>", methods=["GET"])
 def load_draft(draft_id):
-    """加载草稿."""
-    draft = draft_manager.load_draft(draft_id)
-    if draft:
-        return jsonify({
-            "success": True,
-            "draft": {
-                "id": draft.id,
-                "title": draft.content.title,
-                "content": draft.content.content,
-                "tags": draft.content.tags,
-            },
-        })
-    return jsonify({"success": False, "message": "草稿不存在"}), 404
+    try:
+        draft = draft_manager.load_draft(draft_id)
+        return jsonify(
+            {
+                "success": True,
+                "draft": {
+                    "id": draft.id,
+                    "title": draft.content.title,
+                    "content": draft.content.content,
+                    "tags": ",".join(draft.content.tags)
+                    if draft.content.tags
+                    else "",
+                },
+            }
+        )
+    except FileNotFoundError:
+        return jsonify({"success": False, "message": "草稿不存在"}), 404
 
 
 @app.route("/api/drafts/<draft_id>", methods=["DELETE"])
 def delete_draft(draft_id):
-    """删除草稿."""
-    success = draft_manager.delete_draft(draft_id)
-    return jsonify({"success": success})
+    return jsonify({"success": draft_manager.delete_draft(draft_id)})
 
 
-@app.route("/api/platforms", methods=["GET"])
-def list_platforms():
-    """获取平台列表和状态."""
-    manager = get_platform_manager()
-    platforms = []
-    for p in manager.platforms:
-        platforms.append({
-            "name": p.name,
-            "max_title_length": p.max_title_length,
-            "max_content_length": p.max_content_length,
-            "max_images": p.max_images,
-            "content_type": p.content_type,
-        })
-    return jsonify({"success": True, "platforms": platforms})
+@app.route("/api/rpa/login", methods=["POST"])
+def rpa_login():
+    data = _payload()
+    platform = data.get("platform", "")
+    rpa_map = {
+        "bilibili": "BilibiliRPA",
+        "xiaohongshu": "XiaohongshuRPA",
+        "zhihu": "ZhihuRPA",
+    }
+
+    if platform not in rpa_map:
+        return jsonify({"success": False, "message": f"不支持的平台: {platform}"})
+
+    try:
+        module = __import__(
+            f"src.rpa.{platform}_rpa",
+            fromlist=[rpa_map[platform]],
+        )
+        rpa_class = getattr(module, rpa_map[platform])
+        rpa = rpa_class(headless=False)
+        success = rpa.login(timeout=120)
+        rpa.close()
+
+        return jsonify(
+            {
+                "success": success,
+                "message": f"{platform} 登录{'成功' if success else '失败或超时'}",
+            }
+        )
+    except ImportError:
+        return jsonify(
+            {
+                "success": False,
+                "message": "需要安装 Playwright: pip install playwright && playwright install chromium",
+            }
+        )
+    except Exception as exc:
+        return jsonify({"success": False, "message": f"RPA 登录异常: {exc}"})
+
+
+@app.route("/api/rpa/status", methods=["GET"])
+def rpa_status():
+    platform_status = {}
+    rpa_map = {
+        "bilibili": "BilibiliRPA",
+        "xiaohongshu": "XiaohongshuRPA",
+        "zhihu": "ZhihuRPA",
+    }
+
+    for platform, class_name in rpa_map.items():
+        try:
+            module = __import__(f"src.rpa.{platform}_rpa", fromlist=[class_name])
+            rpa_class = getattr(module, class_name)
+            rpa = rpa_class()
+            platform_status[platform] = rpa.check_login()
+            rpa.close()
+        except Exception:
+            platform_status[platform] = False
+
+    return jsonify({"success": True, "login_status": platform_status})
 
 
 if __name__ == "__main__":

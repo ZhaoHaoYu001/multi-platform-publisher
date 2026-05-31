@@ -77,7 +77,7 @@ class TestZhihuPlatform:
         assert "模拟发布" in result.message
 
     def test_real_publish(self):
-        """测试真实发布（无凭证返回失败）."""
+        """测试真实发布（无凭证回退到RPA）."""
         result = self.platform.publish(
             title="测试标题",
             content="测试内容",
@@ -85,7 +85,8 @@ class TestZhihuPlatform:
             mode=PublishMode.REAL,
         )
         assert result.success is False
-        assert "未配置知乎凭证" in result.message
+        # 无API凭证时回退到RPA，RPA可能因浏览器未安装而报错
+        assert "未配置知乎凭证" in result.message or "RPA" in result.message
 
     def test_check_login_no_creds(self):
         """测试无凭证登录."""

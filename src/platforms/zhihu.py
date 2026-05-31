@@ -91,11 +91,8 @@ class ZhihuPlatform(PlatformBase):
         """
         # 凭证检查
         if not self.username or not self.password:
-            return PublishResult(
-                success=False,
-                platform=self.name,
-                message="未配置知乎凭证（username/password）",
-            )
+            # 无API凭证，回退到RPA浏览器自动化
+            return self._do_publish_rpa(title, content, images, **kwargs)
 
         try:
             from ..api.zhihu_api import ZhihuAPI
@@ -127,6 +124,40 @@ class ZhihuPlatform(PlatformBase):
                 success=False,
                 platform=self.name,
                 message=f"知乎发布异常: {e}",
+            )
+
+    def _do_publish_rpa(
+        self, title: str, content: str, images: List[str], **kwargs: Any
+    ) -> PublishResult:
+        """通过RPA浏览器自动化发布知乎文章."""
+        try:
+            from ..rpa.zhihu_rpa import ZhihuRPA
+
+            rpa = ZhihuRPA(headless=False)
+
+            result = rpa.publish(
+                title=title,
+                content=content,
+                images=images,
+            )
+
+            return PublishResult(
+                success=result["success"],
+                platform=self.name,
+                message=result["message"],
+                raw_response=result,
+            )
+        except ImportError:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="RPA发布需要安装playwright: pip install playwright && playwright install chromium",
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"RPA发布异常: {e}",
             )
 
     def check_login(self) -> bool:

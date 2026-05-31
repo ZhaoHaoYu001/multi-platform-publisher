@@ -3,21 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}多平台内容发布器{% endblock %}</title>
+    <title>{% block title %}多平台内容发布工具{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header>
-        <h1>多平台内容发布器</h1>
+    <header class="topbar">
+        <div>
+            <h1>多平台内容发布工具</h1>
+            <p>一次输入，自动适配公众号、知乎、B站和小红书。</p>
+        </div>
         <nav>
-            <a href="/">编辑</a>
+            <a href="/">编辑发布</a>
         </nav>
     </header>
     <main>
         {% block content %}{% endblock %}
     </main>
     <footer>
-        <p>Multi-Platform Publisher &copy; 2026</p>
+        Multi-Platform Publisher · 题目二演示版
     </footer>
     {% block scripts %}{% endblock %}
 </body>

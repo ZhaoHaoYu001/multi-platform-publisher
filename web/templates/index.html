@@ -1,193 +1,300 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <div class="editor-section">
-        <h2>内容编辑</h2>
-
-        <div class="form-group">
-            <label for="title">标题</label>
-            <input type="text" id="title" placeholder="请输入文章标题" maxlength="100">
-            <span class="hint" id="title-hint">0 / 100</span>
+<div class="layout">
+    <section class="editor-panel">
+        <div class="section-title">
+            <h2>内容输入</h2>
+            <span id="save-status"></span>
         </div>
 
-        <div class="form-group">
-            <label for="content">正文</label>
-            <textarea id="content" rows="15" placeholder="支持 Markdown 格式"></textarea>
-        </div>
+        <label for="title">标题</label>
+        <input type="text" id="title" maxlength="120" placeholder="输入文章标题">
+        <div class="counter" id="title-hint">0 / 120</div>
 
-        <div class="form-group">
-            <label for="tags">标签（逗号分隔）</label>
-            <input type="text" id="tags" placeholder="技术, Python, 教程">
-        </div>
+        <label for="content">正文</label>
+        <textarea id="content" rows="16" placeholder="支持 Markdown。例如：# 小标题、列表、代码块、引用等。"></textarea>
 
-        <div class="form-group">
-            <label>目标平台</label>
-            <div class="platform-checkboxes" id="platform-list">
-                <label><input type="checkbox" value="wechat" checked> 微信公众号</label>
-                <label><input type="checkbox" value="zhihu" checked> 知乎</label>
-                <label><input type="checkbox" value="bilibili" checked> B站</label>
-                <label><input type="checkbox" value="xiaohongshu" checked> 小红书</label>
-            </div>
+        <label for="tags">标签</label>
+        <input type="text" id="tags" placeholder="例如：AI工具, 创作效率, 教程">
+
+        <div class="mode-row">
+            <label>
+                <input type="radio" name="mode" value="simulate" checked>
+                模拟发布
+            </label>
+            <label>
+                <input type="radio" name="mode" value="real">
+                真实发布
+            </label>
+            <span>默认模拟发布，适合课堂演示和无凭证环境。</span>
         </div>
 
         <div class="actions">
-            <button onclick="saveDraft()" class="btn btn-secondary">保存草稿</button>
-            <button onclick="previewContent()" class="btn btn-secondary">预览</button>
-            <button onclick="publishContent()" class="btn btn-primary">发布</button>
+            <button type="button" class="btn secondary" id="save-btn">保存草稿</button>
+            <button type="button" class="btn secondary" id="preview-btn">生成适配预览</button>
+            <button type="button" class="btn primary" id="publish-btn">一键发布</button>
         </div>
-    </div>
+    </section>
 
-    <div class="drafts-section">
-        <h2>草稿列表</h2>
-        <div id="draft-list"></div>
-    </div>
-
-    <div class="preview-section" id="preview-section" style="display:none;">
-        <h2>平台预览</h2>
-        <div class="preview-tabs">
-            <button class="tab active" onclick="switchTab('wechat')">微信</button>
-            <button class="tab" onclick="switchTab('zhihu')">知乎</button>
-            <button class="tab" onclick="switchTab('bilibili')">B站</button>
-            <button class="tab" onclick="switchTab('xiaohongshu')">小红书</button>
+    <aside class="side-panel">
+        <div class="section-title">
+            <h2>目标平台</h2>
         </div>
-        <div id="preview-content" class="preview-box"></div>
-    </div>
+        <div id="platform-list" class="platform-list"></div>
+    </aside>
 
-    <div class="result-section" id="result-section" style="display:none;">
-        <h2>发布结果</h2>
-        <div id="publish-results"></div>
-    </div>
+    <section class="preview-panel">
+        <div class="section-title">
+            <h2>平台适配结果</h2>
+            <span id="preview-status">尚未生成</span>
+        </div>
+        <div id="preview-grid" class="result-grid empty-state">
+            输入内容后点击“生成适配预览”。
+        </div>
+    </section>
+
+    <aside class="draft-panel">
+        <div class="section-title">
+            <h2>草稿</h2>
+        </div>
+        <div id="draft-list" class="draft-list"></div>
+    </aside>
+
+    <section class="publish-panel">
+        <div class="section-title">
+            <h2>发布结果</h2>
+            <span id="publish-status"></span>
+        </div>
+        <div id="publish-results" class="result-list empty-state">
+            还没有发布记录。
+        </div>
+    </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-const previews = {};
+const platformNames = {
+    wechat: '微信公众号',
+    zhihu: '知乎',
+    bilibili: 'B站专栏',
+    xiaohongshu: '小红书'
+};
 
-// 标题字数统计
-document.getElementById('title').addEventListener('input', function() {
-    document.getElementById('title-hint').textContent = this.value.length + ' / 100';
-});
+function text(id) {
+    return document.getElementById(id);
+}
 
-// 加载草稿列表
+function formData() {
+    const mode = document.querySelector('input[name="mode"]:checked').value;
+    return {
+        title: text('title').value.trim(),
+        content: text('content').value,
+        tags: text('tags').value,
+        mode,
+        real: mode === 'real',
+        platforms: selectedPlatforms(),
+        images: []
+    };
+}
+
+function selectedPlatforms() {
+    return Array.from(document.querySelectorAll('#platform-list input:checked'))
+        .map(input => input.value);
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
+function assertContentReady() {
+    const data = formData();
+    if (!data.title || !data.content.trim()) {
+        alert('请填写标题和正文。');
+        return null;
+    }
+    if (data.platforms.length === 0) {
+        alert('请至少选择一个平台。');
+        return null;
+    }
+    return data;
+}
+
+async function loadPlatforms() {
+    const resp = await fetch('/api/platforms');
+    const data = await resp.json();
+    const list = text('platform-list');
+    list.innerHTML = '';
+
+    data.platforms.forEach(platform => {
+        const item = document.createElement('label');
+        item.className = 'platform-item';
+        item.innerHTML = `
+            <input type="checkbox" value="${platform.name}" checked>
+            <span>
+                <strong>${platform.display_name}</strong>
+                <small>${platform.summary}</small>
+                <small>${platform.style}</small>
+                <em>${platform.has_credentials ? '凭证已配置' : '可模拟发布'}</em>
+            </span>
+        `;
+        list.appendChild(item);
+    });
+}
+
 async function loadDrafts() {
     const resp = await fetch('/api/drafts');
     const data = await resp.json();
-    const list = document.getElementById('draft-list');
+    const list = text('draft-list');
     list.innerHTML = '';
-    if (data.drafts.length === 0) {
-        list.innerHTML = '<p class="empty">暂无草稿</p>';
+
+    if (!data.drafts.length) {
+        list.className = 'draft-list empty-state';
+        list.textContent = '暂无草稿。';
         return;
     }
-    data.drafts.forEach(d => {
-        const div = document.createElement('div');
-        div.className = 'draft-item';
-        div.innerHTML = `
-            <span>${d.title || '无标题'}</span>
-            <div class="draft-actions">
-                <button onclick="loadDraft('${d.id}')">加载</button>
-                <button onclick="deleteDraft('${d.id}')">删除</button>
-            </div>
+
+    list.className = 'draft-list';
+    data.drafts.forEach(draft => {
+        const item = document.createElement('div');
+        item.className = 'draft-item';
+        item.innerHTML = `
+            <button type="button" data-id="${draft.id}" class="link-btn">${escapeHtml(draft.title || '无标题')}</button>
+            <button type="button" data-delete="${draft.id}" class="small-btn">删除</button>
         `;
-        list.appendChild(div);
+        list.appendChild(item);
     });
 }
 
-// 保存草稿
 async function saveDraft() {
-    const title = document.getElementById('title').value;
-    const content = document.getElementById('content').value;
-    const tags = document.getElementById('tags').value;
+    const data = formData();
     const resp = await fetch('/api/drafts', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, content, tags})
+        body: JSON.stringify(data)
     });
-    const data = await resp.json();
-    if (data.success) {
-        alert('草稿已保存');
-        loadDrafts();
-    }
+    const result = await resp.json();
+    text('save-status').textContent = result.success ? '已保存草稿' : '保存失败';
+    loadDrafts();
 }
 
-// 加载草稿
 async function loadDraft(id) {
     const resp = await fetch('/api/drafts/' + id);
     const data = await resp.json();
-    if (data.success) {
-        document.getElementById('title').value = data.draft.title || '';
-        document.getElementById('content').value = data.draft.content || '';
-        document.getElementById('tags').value = data.draft.tags || '';
-    }
+    if (!data.success) return;
+
+    text('title').value = data.draft.title || '';
+    text('content').value = data.draft.content || '';
+    text('tags').value = data.draft.tags || '';
+    updateTitleHint();
 }
 
-// 删除草稿
 async function deleteDraft(id) {
-    if (!confirm('确定删除此草稿？')) return;
+    if (!confirm('确定删除这个草稿吗？')) return;
     await fetch('/api/drafts/' + id, {method: 'DELETE'});
     loadDrafts();
 }
 
-// 预览
 async function previewContent() {
-    const title = document.getElementById('title').value;
-    const content = document.getElementById('content').value;
+    const data = assertContentReady();
+    if (!data) return;
+
+    text('preview-status').textContent = '生成中...';
     const resp = await fetch('/api/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, content})
+        body: JSON.stringify(data)
     });
-    const data = await resp.json();
-    if (data.success) {
-        Object.assign(previews, data.previews);
-        document.getElementById('preview-section').style.display = 'block';
-        switchTab('wechat');
-    }
+    const result = await resp.json();
+    renderPreviews(result.previews || {});
+    text('preview-status').textContent = '已生成';
 }
 
-// 切换预览Tab
-function switchTab(platform) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById('preview-content').innerHTML = previews[platform] || '<p>暂无预览</p>';
+function renderPreviews(previews) {
+    const grid = text('preview-grid');
+    grid.className = 'result-grid';
+    grid.innerHTML = '';
+
+    Object.entries(previews).forEach(([name, preview]) => {
+        const card = document.createElement('article');
+        card.className = 'preview-card';
+        const warnings = (preview.warnings || [])
+            .map(item => `<li>${escapeHtml(item)}</li>`)
+            .join('');
+        card.innerHTML = `
+            <h3>${platformNames[name] || name}</h3>
+            <div class="meta-line">
+                <span>${escapeHtml(preview.content_type || '')}</span>
+                <span>${preview.content_length || 0} / ${preview.max_content_length || '-'}</span>
+            </div>
+            <h4>${escapeHtml(preview.title || '')}</h4>
+            <pre>${escapeHtml(preview.content || '')}</pre>
+            ${warnings ? `<ul class="warnings">${warnings}</ul>` : ''}
+        `;
+        grid.appendChild(card);
+    });
 }
 
-// 发布
 async function publishContent() {
-    const title = document.getElementById('title').value;
-    const content = document.getElementById('content').value;
-    const checkboxes = document.querySelectorAll('#platform-list input:checked');
-    const platforms = Array.from(checkboxes).map(cb => cb.value);
+    const data = assertContentReady();
+    if (!data) return;
 
-    if (!title || !content) {
-        alert('请填写标题和内容');
-        return;
-    }
-    if (platforms.length === 0) {
-        alert('请至少选择一个平台');
+    if (data.real && !confirm('真实发布会调用平台接口或RPA浏览器流程，确认继续吗？')) {
         return;
     }
 
+    text('publish-status').textContent = '发布中...';
     const resp = await fetch('/api/publish', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, content, platforms, images: []})
+        body: JSON.stringify(data)
     });
-    const data = await resp.json();
-
-    if (data.success) {
-        document.getElementById('result-section').style.display = 'block';
-        const div = document.getElementById('publish-results');
-        div.innerHTML = '';
-        for (const [platform, result] of Object.entries(data.results)) {
-            const status = result.success ? '✅' : '❌';
-            div.innerHTML += `<div class="result-item">${status} <strong>${platform}</strong>: ${result.message}</div>`;
-        }
-    }
+    const result = await resp.json();
+    renderPublishResults(result);
 }
 
-// 页面加载时获取草稿
+function renderPublishResults(result) {
+    const box = text('publish-results');
+    box.className = 'result-list';
+    box.innerHTML = '';
+    text('publish-status').textContent = result.mode === 'real' ? '真实发布完成' : '模拟发布完成';
+
+    Object.entries(result.results || {}).forEach(([name, item]) => {
+        const div = document.createElement('div');
+        div.className = item.success ? 'publish-item success' : 'publish-item failed';
+        div.innerHTML = `
+            <strong>${platformNames[name] || name}</strong>
+            <span>${item.success ? '成功' : '失败'}</span>
+            <p>${escapeHtml(item.message || '')}</p>
+            ${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">查看链接</a>` : ''}
+        `;
+        box.appendChild(div);
+    });
+}
+
+function updateTitleHint() {
+    text('title-hint').textContent = `${text('title').value.length} / 120`;
+}
+
+text('title').addEventListener('input', updateTitleHint);
+text('save-btn').addEventListener('click', saveDraft);
+text('preview-btn').addEventListener('click', previewContent);
+text('publish-btn').addEventListener('click', publishContent);
+text('draft-list').addEventListener('click', event => {
+    const loadId = event.target.dataset.id;
+    const deleteId = event.target.dataset.delete;
+    if (loadId) loadDraft(loadId);
+    if (deleteId) deleteDraft(deleteId);
+});
+
+loadPlatforms();
 loadDrafts();
+updateTitleHint();
 </script>
 {% endblock %}
