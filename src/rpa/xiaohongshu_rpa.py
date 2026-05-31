@@ -27,7 +27,7 @@ class XiaohongshuRPA(RPABase):
         """
         super().__init__(platform_name="xiaohongshu", headless=headless, **kwargs)
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """执行小红书登录.
 
         打开小红书创作者中心，等待用户手动扫码或输入密码登录。
@@ -40,34 +40,12 @@ class XiaohongshuRPA(RPABase):
                 return False
 
         try:
-            # 访问小红书创作者中心
-            self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
-            time.sleep(2)
-
-            # 检查是否已登录
-            cookies = self._context.cookies() if self._context else []
-            has_session = any(c["name"] == "web_session" for c in cookies)
-
-            if has_session:
-                print("[RPA-小红书] 已检测到登录状态")
-                return True
-
-            # 未登录，等待用户手动登录
-            print("[RPA-小红书] 请在浏览器中手动登录小红书...")
-            print("[RPA-小红书] 登录完成后请按回车继续...")
-
-            # 等待登录完成（最多5分钟）
-            for _ in range(300):
-                time.sleep(1)
-                cookies = self._context.cookies() if self._context else []
-                if any(c["name"] == "web_session" for c in cookies):
-                    print("[RPA-小红书] 登录成功！")
-                    self._save_cookies()
-                    return True
-
-            print("[RPA-小红书] 登录超时")
-            return False
-
+            return self.ensure_logged_in(
+                url=self.PUBLISH_URL,
+                cookie_names=["web_session"],
+                platform_label="小红书",
+                allow_interactive=interactive,
+            )
         except Exception as e:
             print(f"[RPA-小红书] 登录失败: {e}")
             return False
@@ -95,9 +73,10 @@ class XiaohongshuRPA(RPABase):
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态
-            if not self.login():
-                return {"success": False, "message": "未登录小红书"}
+            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("小红书")}
 
             # 访问发布页面
             print("[RPA-小红书] 正在打开发布页面...")

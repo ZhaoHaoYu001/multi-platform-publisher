@@ -12,6 +12,11 @@ from src.adapters.bilibili_adapter import BilibiliAdapter
 from src.adapters.xiaohongshu_adapter import XiaohongshuAdapter
 from src.adapters.douyin_adapter import DouyinAdapter
 from src.adapters.weibo_adapter import WeiboAdapter
+from src.rpa.bilibili_rpa import BilibiliRPA
+from src.rpa.douyin_rpa import DouyinRPA
+from src.rpa.weibo_rpa import WeiboRPA
+from src.rpa.xiaohongshu_rpa import XiaohongshuRPA
+from src.rpa.zhihu_rpa import ZhihuRPA
 from src.core.content_parser import ContentParser
 from src.core.credential_store import CredentialStore
 from src.core.platform_base import PublishMode
@@ -25,6 +30,15 @@ from src.pipeline.publish_pipeline import (
     ParseStage, PipelineContext, PublishPipeline,
 )
 from src.review.previewer import Previewer
+
+
+RPA_LOGIN_PLATFORMS = {
+    "zhihu": ("知乎", ZhihuRPA),
+    "bilibili": ("B站", BilibiliRPA),
+    "xiaohongshu": ("小红书", XiaohongshuRPA),
+    "douyin": ("抖音", DouyinRPA),
+    "weibo": ("微博", WeiboRPA),
+}
 
 
 def create_app():
@@ -521,6 +535,55 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         """获取凭证状态（不返回实际值）."""
         status = credential_store.get_all_status()
         return jsonify({"success": True, "credentials": status})
+
+
+    # ──────────────────── RPA 登录态 API ────────────────────
+
+    @app.route("/api/rpa/status", methods=["GET"])
+    def rpa_status():
+        """获取RPA预登录状态."""
+        platforms = []
+        for name, (label, rpa_cls) in RPA_LOGIN_PLATFORMS.items():
+            try:
+                rpa = rpa_cls()
+                status = rpa.session_status()
+                status.update({"name": name, "label": label})
+                platforms.append(status)
+            except Exception as e:
+                platforms.append({
+                    "name": name,
+                    "label": label,
+                    "has_saved_session": False,
+                    "error": str(e),
+                })
+        return jsonify({"success": True, "platforms": platforms})
+
+
+    @app.route("/api/rpa/login", methods=["POST"])
+    def rpa_login():
+        """打开指定平台的RPA预登录窗口."""
+        data = request.get_json(silent=True) or {}
+        platform = data.get("platform")
+
+        if platform not in RPA_LOGIN_PLATFORMS:
+            return jsonify({"success": False, "message": "不支持的平台"}), 400
+
+        label, rpa_cls = RPA_LOGIN_PLATFORMS[platform]
+        rpa = rpa_cls()
+        try:
+            ok = rpa.login(interactive=True)
+            message = (
+                f"{label} 预登录成功，后续真实发布将复用该登录态。"
+                if ok
+                else f"{label} 预登录未完成，请确认已安装 Playwright 并在打开的窗口中完成登录。"
+            )
+            return jsonify({
+                "success": ok,
+                "message": message,
+                "status": rpa.session_status(),
+            })
+        finally:
+            rpa.close_browser()
 
 
     # ──────────────────── 启动 ────────────────────

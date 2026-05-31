@@ -27,7 +27,7 @@ class BilibiliRPA(RPABase):
         """
         super().__init__(platform_name="bilibili", headless=headless, **kwargs)
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """执行B站登录.
 
         打开B站首页，等待用户手动扫码或输入密码登录。
@@ -40,34 +40,12 @@ class BilibiliRPA(RPABase):
                 return False
 
         try:
-            # 访问B站
-            self._page.goto(self.HOME_URL, wait_until="domcontentloaded")
-            time.sleep(2)
-
-            # 检查是否已登录（通过Cookie）
-            cookies = self._context.cookies() if self._context else []
-            has_sess = any(c["name"] == "SESSDATA" for c in cookies)
-
-            if has_sess:
-                print("[RPA-B站] 已检测到登录状态")
-                return True
-
-            # 未登录，等待用户手动登录
-            print("[RPA-B站] 请在浏览器中手动登录B站...")
-            print("[RPA-B站] 登录完成后请按回车继续...")
-
-            # 等待登录完成（最多5分钟）
-            for _ in range(300):
-                time.sleep(1)
-                cookies = self._context.cookies() if self._context else []
-                if any(c["name"] == "SESSDATA" for c in cookies):
-                    print("[RPA-B站] 登录成功！")
-                    self._save_cookies()
-                    return True
-
-            print("[RPA-B站] 登录超时")
-            return False
-
+            return self.ensure_logged_in(
+                url=self.HOME_URL,
+                cookie_names=["SESSDATA"],
+                platform_label="B站",
+                allow_interactive=interactive,
+            )
         except Exception as e:
             print(f"[RPA-B站] 登录失败: {e}")
             return False
@@ -95,9 +73,10 @@ class BilibiliRPA(RPABase):
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态
-            if not self.login():
-                return {"success": False, "message": "未登录B站"}
+            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("B站")}
 
             # 访问专栏编辑页面
             print("[RPA-B站] 正在打开专栏编辑页面...")
