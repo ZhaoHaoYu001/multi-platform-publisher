@@ -794,3 +794,75 @@ footer {
     display: flex;
     gap: 0.8rem;
 }
+
+/* ──────────── 定时发布 ──────────── */
+.schedule-section {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.schedule-section label {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.schedule-options {
+    margin-top: 0.8rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.schedule-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-family: inherit;
+    transition: border-color 0.2s;
+}
+
+.schedule-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52,152,219,0.1);
+}
+
+/* ──────────── Scheduler Status ──────────── */
+.scheduler-status-card {
+    background: #f8f9fa;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.scheduler-row {
+    display: flex;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+.scheduler-next {
+    padding-top: 0.5rem;
+    border-top: 1px solid #e0e0e0;
+    color: #666;
+    font-size: 0.85rem;
+}
+
+/* ──────────── Task Scheduled ──────────── */
+.task-scheduled {
+    background: #fff8e1;
+    border-left: 3px solid #f39c12;
+    padding-left: 0.8rem;
+    border-radius: 4px;
+}
+
+.task-scheduled .task-status { color: #f39c12; }

@@ -69,6 +69,64 @@ def create_app():
     def _creds():
         return {p: credential_store.get(p) for p in credential_store.list_platforms()}
 
+    # ── 注册调度器执行回调 ──
+    def _execute_scheduled_task(task):
+        """执行定时发布任务：通过适配器管线真实发布到目标平台."""
+        platform_name = task.platform
+        creds = _creds()
+        adapter = registry.get(platform_name, credentials=creds.get(platform_name, {}))
+        if adapter is None:
+            task_queue.update_status(task.id, "failed", error=f"平台 {platform_name} 未注册")
+            return
+
+        try:
+            # 从任务元数据中恢复内容
+            metadata = task.metadata or {}
+            title = task.title
+            content = metadata.get("content", "")
+            tags = metadata.get("tags", "")
+            images = metadata.get("images", [])
+
+            # 解析内容
+            parser = ContentParser()
+            doc = parser.parse(content, title=title,
+                               tags=[t.strip() for t in tags.split(",") if t.strip()] if tags else None)
+
+            # 创建发布管线并执行
+            pipeline = PublishPipeline.create_default(
+                adapter=adapter,
+                title=title,
+                tags=[t.strip() for t in tags.split(",") if t.strip()] if tags else None,
+            )
+            ctx = PipelineContext(
+                metadata={
+                    "raw_content": content,
+                    "title": title,
+                    "tags": [t.strip() for t in tags.split(",") if t.strip()] if tags else [],
+                    "images": images,
+                    "mode": PublishMode.REAL,
+                },
+                platform=platform_name,
+            )
+            ctx = pipeline.execute(ctx)
+
+            if ctx.result and ctx.result.success:
+                task_queue.update_status(task.id, "success", result=ctx.result)
+            else:
+                error_msg = "; ".join(ctx.errors) if ctx.errors else "发布失败"
+                task_queue.update_status(task.id, "failed", error=error_msg)
+
+        except Exception as e:
+            task_queue.update_status(task.id, "failed", error=str(e))
+
+    scheduler.on_execute(_execute_scheduled_task)
+
+    # 非测试模式下自动启动调度器；测试中由各用例自行管理
+    if not app.config.get("TESTING", False):
+        scheduler.start()
+        import atexit
+        atexit.register(lambda: scheduler.stop() if scheduler.is_running else None)
+
     # Register routes
     _register_routes(app, registry, rule_engine, draft_manager, previewer,
                      task_queue, image_processor, scheduler, credential_store, _creds,

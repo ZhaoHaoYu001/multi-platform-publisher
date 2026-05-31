@@ -85,10 +85,30 @@
             </div>
         </div>
 
+        <div class="form-group schedule-section" id="schedule-section">
+            <label>
+                <input type="checkbox" id="enable-schedule" onchange="toggleSchedule()"> ⏰ 定时发布
+            </label>
+            <div class="schedule-options" id="schedule-options" style="display:none;">
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="scheduled-time">发布时间</label>
+                        <input type="datetime-local" id="scheduled-time" class="schedule-input">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label for="delay-minutes">或延迟发布（分钟）</label>
+                        <input type="number" id="delay-minutes" class="schedule-input" placeholder="例如：30" min="1">
+                    </div>
+                </div>
+                <p class="hint" style="margin-top:0.3rem;">💡 定时任务将在后台自动执行，您可以在"任务"页面查看和管理</p>
+            </div>
+        </div>
+
         <div class="actions">
             <button onclick="saveDraft()" class="btn btn-secondary">💾 保存草稿</button>
             <button onclick="previewContent()" class="btn btn-secondary">👁 预览</button>
             <button onclick="adaptAndReview()" class="btn btn-secondary" id="btn-adapt">🧪 模拟发布</button>
+            <button onclick="schedulePublish()" class="btn btn-primary" id="btn-schedule" style="display:none;">⏰ 定时发布</button>
         </div>
     </div>
 
@@ -471,6 +491,66 @@ async function confirmPublish() {
 // 关闭适配编辑区
 function closeAdaptSection() {
     document.getElementById('adapt-section').style.display = 'none';
+}
+
+// ── 定时发布 ──
+function toggleSchedule() {
+    const enabled = document.getElementById('enable-schedule').checked;
+    document.getElementById('schedule-options').style.display = enabled ? 'block' : 'none';
+    document.getElementById('btn-schedule').style.display = enabled ? 'inline-block' : 'none';
+}
+
+async function schedulePublish() {
+    const title = document.getElementById('title').value;
+    const contentVal = document.getElementById('content').value;
+    const tags = document.getElementById('tags').value;
+    const checkboxes = document.querySelectorAll('#platform-list input:checked');
+    const platforms = Array.from(checkboxes).map(cb => cb.value);
+    const scheduledTime = document.getElementById('scheduled-time').value;
+    const delayMinutes = document.getElementById('delay-minutes').value;
+
+    if (!title || !contentVal) { alert('请填写标题和内容'); return; }
+    if (platforms.length === 0) { alert('请至少选择一个平台'); return; }
+
+    // 构建请求体
+    const body = { title, content: contentVal, tags, platforms, images: [] };
+    if (scheduledTime) {
+        body.scheduled_at = new Date(scheduledTime).toISOString();
+    } else if (delayMinutes) {
+        body.delay_seconds = parseInt(delayMinutes) * 60;
+    } else {
+        alert('请设置发布时间或延迟分钟数');
+        return;
+    }
+
+    const btn = document.getElementById('btn-schedule');
+    btn.disabled = true;
+    btn.textContent = '⏳ 创建定时任务...';
+
+    try {
+        const resp = await fetch('/api/schedule', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            const info = Object.entries(data.results).map(([p, r]) =>
+                `${p}: 将于 ${new Date(r.scheduled_at).toLocaleString('zh-CN')} 发布`
+            ).join('\n');
+            alert(`✅ 定时任务已创建！\n\n${info}\n\n您可以在"任务"页面查看和管理定时任务。`);
+            // 重置定时发布选项
+            document.getElementById('enable-schedule').checked = false;
+            toggleSchedule();
+        } else {
+            alert('创建失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('网络错误: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⏰ 定时发布';
+    }
 }
 
 // Toast 提示
