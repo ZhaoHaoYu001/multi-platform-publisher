@@ -27,7 +27,7 @@ class WeiboRPA(RPABase):
     LOGIN_URL = "https://weibo.com/"
     PUBLISH_URL = "https://weibo.com/"
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """登录微博.
 
         打开登录页面，等待用户手动登录。
@@ -35,15 +35,17 @@ class WeiboRPA(RPABase):
         Returns:
             是否登录成功
         """
-        try:
-            page = self._context.new_page()
-            page.goto(self.LOGIN_URL)
+        if not self._page and not self.launch_browser():
+            return False
 
-            # 等待用户登录（检测登录成功标志）
-            page.wait_for_url("**/home**", timeout=120000)
-            self._save_cookies()
-            page.close()
-            return True
+        try:
+            return self.ensure_logged_in(
+                url=self.LOGIN_URL,
+                cookie_names=["SUB"],
+                platform_label="微博",
+                timeout=120,
+                allow_interactive=interactive,
+            )
         except Exception as e:
             print(f"登录失败: {e}")
             return False
@@ -64,7 +66,14 @@ class WeiboRPA(RPABase):
         Returns:
             发布结果
         """
+        if not self._context and not self.launch_browser():
+            return {"success": False, "message": "启动浏览器失败"}
+
         try:
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("微博")}
+
             page = self._context.new_page()
             page.goto(self.PUBLISH_URL)
             page.wait_for_load_state("networkidle")

@@ -50,7 +50,6 @@ class WeiboAdapter(PlatformAdapter):
         try:
             rpa = WeiboRPA()
             with rpa:
-                rpa.login()
                 result = rpa.publish(
                     title=adapted.title,
                     content=adapted.content,

@@ -9,6 +9,26 @@
 
 一个功能完整的多平台内容发布Python工具，支持微信公众号、知乎、B站、小红书、抖音、微博等6个平台的一键发布。
 
+## 当前开发阶段
+
+截至 2026-05-31，项目已经进入可演示的 v2.0 功能完善阶段，题目二的核心闭环已经具备：
+
+- 用户可在 Web 面板或 CLI 中输入标题、正文、标签和图片。
+- 内容会通过 YAML 规则引擎自动适配各平台的标题长度、正文格式、图片要求和发布风格。
+- 发布流程已经拆成 `ContentParser -> RuleEngine -> Adapter -> PublishPipeline`，默认可模拟发布，配置凭证后可真实投递。
+- Web 面板已经覆盖编辑、预览、草稿、模板、任务和设置等常见创作者工作流。
+- 新平台通过“规则文件 + 适配器 + API/RPA 投递层”扩展，不需要重写主发布流程。
+
+题目要求对应关系：
+
+| 题目要求 | 当前实现 |
+| --- | --- |
+| 用户输入内容 | Web 面板、交互式 CLI、命令行参数 |
+| 自动适配平台格式与风格 | `config/rules/*.yaml` + `RuleEngine` + 平台适配器 |
+| 一键发布 | `PublishPipeline` 支持多平台批量发布 |
+| 可选模拟发布 | `PublishMode.SIMULATE` 是默认安全演示模式 |
+| 扩展更多平台架构 | 新增规则 YAML、Adapter、API/RPA 类并注册即可 |
+
 ## ✨ 功能特性
 
 - 🚀 **一键多平台发布** - 同时发布到6个平台
@@ -84,6 +104,33 @@ DOUYIN_COOKIE=your_cookie
 
 # 微博（可选）
 WEIBO_COOKIE=your_cookie
+
+# RPA浏览器登录态复用（可选，默认开启）
+MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
+MULTI_PUBLISHER_RPA_AUTO_LOGIN=false
+# MULTI_PUBLISHER_RPA_PROFILE_DIR=~/.multi_publisher/browser_profiles
+```
+
+### RPA登录态复用
+
+真实发布走 RPA 时，系统默认使用专用的持久化浏览器 Profile：
+
+```text
+~/.multi_publisher/browser_profiles/<platform>
+```
+
+建议在 Web 管理面板的“设置 → RPA预登录”中提前打开目标平台的登录页，完成一次扫码/账号/验证码登录；登录态会保存到该 Profile。后续真实发布会先检测该 Profile 里的 cookie、localStorage、IndexedDB 等浏览器状态，能识别已登录状态时会直接进入发布流程，不再反复要求输入账号密码。
+
+为避免项目演示或正式发布时被登录流程打断，`MULTI_PUBLISHER_RPA_AUTO_LOGIN` 默认关闭。登录态缺失或过期时，真实发布会快速返回提示，要求先到设置页重新预登录；如果你希望发布时仍然自动弹出登录等待流程，可在 `.env` 中设置：
+
+```env
+MULTI_PUBLISHER_RPA_AUTO_LOGIN=true
+```
+
+如需禁用该行为，可在 `.env` 中设置：
+
+```env
+MULTI_PUBLISHER_RPA_PERSIST_PROFILE=false
 ```
 
 ## 📖 使用方式

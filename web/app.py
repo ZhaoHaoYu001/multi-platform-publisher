@@ -12,6 +12,11 @@ from src.adapters.bilibili_adapter import BilibiliAdapter
 from src.adapters.xiaohongshu_adapter import XiaohongshuAdapter
 from src.adapters.douyin_adapter import DouyinAdapter
 from src.adapters.weibo_adapter import WeiboAdapter
+from src.rpa.bilibili_rpa import BilibiliRPA
+from src.rpa.douyin_rpa import DouyinRPA
+from src.rpa.weibo_rpa import WeiboRPA
+from src.rpa.xiaohongshu_rpa import XiaohongshuRPA
+from src.rpa.zhihu_rpa import ZhihuRPA
 from src.core.content_parser import ContentParser
 from src.core.credential_store import CredentialStore
 from src.core.platform_base import PublishMode
@@ -27,6 +32,15 @@ from src.pipeline.publish_pipeline import (
 from src.review.previewer import Previewer
 from src.ai.mimo_client import MiMoClient
 from src.ai.content_generator import ContentGenerator
+
+
+RPA_LOGIN_PLATFORMS = {
+    "zhihu": ("知乎", ZhihuRPA),
+    "bilibili": ("B站", BilibiliRPA),
+    "xiaohongshu": ("小红书", XiaohongshuRPA),
+    "douyin": ("抖音", DouyinRPA),
+    "weibo": ("微博", WeiboRPA),
+}
 
 
 def create_app():
@@ -88,28 +102,28 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
     def index():
         """首页 - 内容编辑."""
         return render_template("index.html")
-    
-    
+
+
     @app.route("/templates")
     def templates_page():
         """模板管理页面."""
         return render_template("templates.html")
-    
-    
+
+
     @app.route("/tasks")
     def tasks_page():
         """任务监控页面."""
         return render_template("tasks.html")
-    
-    
+
+
     @app.route("/settings")
     def settings_page():
         """设置页面."""
         return render_template("settings.html")
-    
-    
+
+
     # ──────────────────── 平台 API ────────────────────
-    
+
     @app.route("/api/platforms", methods=["GET"])
     def list_platforms():
         """获取平台列表和规则."""
@@ -127,10 +141,10 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             except FileNotFoundError:
                 platforms.append({"name": name, "error": "规则文件缺失"})
         return jsonify({"success": True, "platforms": platforms})
-    
-    
+
+
     # ──────────────────── 预览 API ────────────────────
-    
+
     @app.route("/api/preview", methods=["POST"])
     def preview():
         """预览各平台格式（使用 RuleEngine 适配）."""
@@ -138,10 +152,10 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         title = data.get("title", "")
         content = data.get("content", "")
         tags = data.get("tags", "")
-    
+
         parser = ContentParser()
         doc = parser.parse(content, title=title, tags=tags.split(",") if tags else None)
-    
+
         previews = {}
         for name in registry.list_platforms():
             try:
@@ -154,12 +168,12 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 }
             except Exception as e:
                 previews[name] = {"error": str(e)}
-    
+
         return jsonify({"success": True, "previews": previews})
-    
-    
+
+
     # ──────────────────── 发布 API ────────────────────
-    
+
     @app.route("/api/publish", methods=["POST"])
     def publish():
         """发布到选中平台（使用 Pipeline）."""
@@ -181,6 +195,7 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 results[platform_name] = {"success": False, "message": f"平台 {platform_name} 未注册"}
                 continue
 
+            # 创建任务
             task_id = task_queue.enqueue(platform=platform_name, title=title)
             task_queue.update_status(task_id, "publishing")
 
@@ -241,16 +256,16 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                     error_msg = "; ".join(ctx.errors) if ctx.errors else "未知错误"
                     results[platform_name] = {"success": False, "message": error_msg, "task_id": task_id}
                     task_queue.update_status(task_id, "failed", error=error_msg)
-    
+
             except Exception as e:
                 results[platform_name] = {"success": False, "message": str(e), "task_id": task_id}
                 task_queue.update_status(task_id, "failed", error=str(e))
-    
+
         return jsonify({"success": True, "results": results})
-    
-    
+
+
     # ──────────────────── 草稿 API ────────────────────
-    
+
     @app.route("/api/drafts", methods=["GET"])
     def list_drafts():
         """获取草稿列表."""
@@ -266,8 +281,8 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 for d in drafts
             ],
         })
-    
-    
+
+
     @app.route("/api/drafts", methods=["POST"])
     def save_draft():
         """保存草稿."""
@@ -275,15 +290,15 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         title = data.get("title", "")
         content = data.get("content", "")
         tags = data.get("tags", "")
-    
+
         draft = draft_manager.new_draft(title=title, content=content)
         if tags:
             draft.content.tags = [t.strip() for t in tags.split(",") if t.strip()]
         draft_manager.save_current(draft)
-    
+
         return jsonify({"success": True, "draft_id": draft.id})
-    
-    
+
+
     @app.route("/api/drafts/<draft_id>", methods=["GET"])
     def load_draft(draft_id):
         """加载草稿."""
@@ -300,17 +315,17 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             })
         except FileNotFoundError:
             return jsonify({"success": False, "message": "草稿不存在"}), 404
-    
-    
+
+
     @app.route("/api/drafts/<draft_id>", methods=["DELETE"])
     def delete_draft(draft_id):
         """删除草稿."""
         success = draft_manager.delete_draft(draft_id)
         return jsonify({"success": success})
-    
-    
+
+
     # ──────────────────── 任务 API ────────────────────
-    
+
     @app.route("/api/tasks", methods=["GET"])
     def list_tasks():
         """获取任务列表."""
@@ -331,8 +346,8 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 for t in tasks
             ],
         })
-    
-    
+
+
     @app.route("/api/tasks/<task_id>", methods=["GET"])
     def get_task(task_id):
         """获取单个任务状态."""
@@ -350,17 +365,17 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 "created_at": task.created_at.isoformat() if task.created_at else None,
             },
         })
-    
-    
+
+
     @app.route("/api/tasks", methods=["DELETE"])
     def clear_tasks():
         """清空任务队列."""
         task_queue.clear()
         return jsonify({"success": True})
-    
-    
+
+
     # ──────────────────── 模板 API ────────────────────
-    
+
     # 内置模板
     BUILTIN_TEMPLATES = [
         {
@@ -427,14 +442,14 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             "variables": ["year", "industry", "topic", "background", "market_status", "trends", "competition", "outlook", "tags"],
         },
     ]
-    
-    
+
+
     @app.route("/api/templates", methods=["GET"])
     def list_templates():
         """获取模板列表."""
         return jsonify({"success": True, "templates": BUILTIN_TEMPLATES})
-    
-    
+
+
     @app.route("/api/templates/<template_id>", methods=["GET"])
     def get_template(template_id):
         """获取单个模板."""
@@ -442,34 +457,34 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             if tpl["id"] == template_id:
                 return jsonify({"success": True, "template": tpl})
         return jsonify({"success": False, "message": "模板不存在"}), 404
-    
-    
+
+
     @app.route("/api/templates/<template_id>/apply", methods=["POST"])
     def apply_template(template_id):
         """应用模板（变量替换）."""
         data = request.json
         variables = data.get("variables", {})
-    
+
         tpl = None
         for t in BUILTIN_TEMPLATES:
             if t["id"] == template_id:
                 tpl = t
                 break
-    
+
         if tpl is None:
             return jsonify({"success": False, "message": "模板不存在"}), 404
-    
+
         title = tpl["title_template"]
         content = tpl["content_template"]
         for key, value in variables.items():
             title = title.replace("{{" + key + "}}", value)
             content = content.replace("{{" + key + "}}", value)
-    
+
         return jsonify({"success": True, "title": title, "content": content})
-    
-    
+
+
     # ──────────────────── 定时发布 API ────────────────────
-    
+
     @app.route("/api/schedule", methods=["POST"])
     def schedule_publish():
         """创建定时发布任务."""
@@ -481,13 +496,13 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         platforms = data.get("platforms", [])
         scheduled_at = data.get("scheduled_at")  # ISO格式时间
         delay_seconds = data.get("delay_seconds")  # 延迟秒数
-    
+
         if not title or not content:
             return jsonify({"success": False, "message": "请填写标题和内容"}), 400
-    
+
         if not platforms:
             return jsonify({"success": False, "message": "请至少选择一个平台"}), 400
-    
+
         # 解析时间
         from datetime import datetime as dt, timedelta
         if scheduled_at:
@@ -499,7 +514,7 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
             run_at = dt.now() + timedelta(seconds=int(delay_seconds))
         else:
             return jsonify({"success": False, "message": "请指定执行时间或延迟"}), 400
-    
+
         results = {}
         for platform_name in platforms:
             task_id = task_queue.schedule_at(
@@ -511,10 +526,10 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 tags=tags,
             )
             results[platform_name] = {"task_id": task_id, "scheduled_at": run_at.isoformat()}
-    
+
         return jsonify({"success": True, "results": results})
-    
-    
+
+
     @app.route("/api/schedule", methods=["GET"])
     def list_scheduled():
         """列出定时任务."""
@@ -533,15 +548,15 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
                 for t in tasks
             ],
         })
-    
-    
+
+
     @app.route("/api/schedule/<task_id>", methods=["DELETE"])
     def cancel_scheduled(task_id):
         """取消定时任务."""
         success = task_queue.cancel_task(task_id)
         return jsonify({"success": success})
-    
-    
+
+
     @app.route("/api/scheduler/status", methods=["GET"])
     def scheduler_status():
         """获取调度器状态."""
@@ -615,19 +630,68 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         })
 
     # ──────────────────── 凭证 API ────────────────────
-    
+
     @app.route("/api/credentials", methods=["GET"])
     def get_credentials():
         """获取凭证状态（不返回实际值）."""
         status = credential_store.get_all_status()
         return jsonify({"success": True, "credentials": status})
-    
-    
+
+
+    # ──────────────────── RPA 登录态 API ────────────────────
+
+    @app.route("/api/rpa/status", methods=["GET"])
+    def rpa_status():
+        """获取RPA预登录状态."""
+        platforms = []
+        for name, (label, rpa_cls) in RPA_LOGIN_PLATFORMS.items():
+            try:
+                rpa = rpa_cls()
+                status = rpa.session_status()
+                status.update({"name": name, "label": label})
+                platforms.append(status)
+            except Exception as e:
+                platforms.append({
+                    "name": name,
+                    "label": label,
+                    "has_saved_session": False,
+                    "error": str(e),
+                })
+        return jsonify({"success": True, "platforms": platforms})
+
+
+    @app.route("/api/rpa/login", methods=["POST"])
+    def rpa_login():
+        """打开指定平台的RPA预登录窗口."""
+        data = request.get_json(silent=True) or {}
+        platform = data.get("platform")
+
+        if platform not in RPA_LOGIN_PLATFORMS:
+            return jsonify({"success": False, "message": "不支持的平台"}), 400
+
+        label, rpa_cls = RPA_LOGIN_PLATFORMS[platform]
+        rpa = rpa_cls()
+        try:
+            ok = rpa.login(interactive=True)
+            message = (
+                f"{label} 预登录成功，后续真实发布将复用该登录态。"
+                if ok
+                else f"{label} 预登录未完成，请确认已安装 Playwright 并在打开的窗口中完成登录。"
+            )
+            return jsonify({
+                "success": ok,
+                "message": message,
+                "status": rpa.session_status(),
+            })
+        finally:
+            rpa.close_browser()
+
+
     # ──────────────────── 启动 ────────────────────
-    
+
     if __name__ == "__main__":
         app.run(debug=True, host="0.0.0.0", port=5000)
-    
+
 
 
 if __name__ == "__main__":

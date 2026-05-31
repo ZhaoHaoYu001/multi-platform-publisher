@@ -10,6 +10,12 @@
     </div>
 
     <div class="section">
+        <h2>RPA预登录</h2>
+        <p class="section-desc">真实发布默认只复用已保存的浏览器登录态，不会在发布过程中临时要求扫码或验证码。演示前请先在这里完成一次预登录。</p>
+        <div id="rpa-status"></div>
+    </div>
+
+    <div class="section">
         <h2>环境变量模板</h2>
         <p class="section-desc">在项目根目录创建 <code>.env</code> 文件，填入以下内容：</p>
         <pre class="code-block"># 微信公众号
@@ -31,7 +37,12 @@ XIAOHONGSHU_COOKIE=your_cookie
 DOUYIN_COOKIE=your_cookie
 
 # 微博（可选）
-WEIBO_COOKIE=your_cookie</pre>
+WEIBO_COOKIE=your_cookie
+
+# RPA浏览器登录态复用（可选，默认开启）
+MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
+MULTI_PUBLISHER_RPA_AUTO_LOGIN=false
+# MULTI_PUBLISHER_RPA_PROFILE_DIR=~/.multi_publisher/browser_profiles</pre>
     </div>
 
     <div class="section">
@@ -66,6 +77,59 @@ async function loadCredentials() {
     }
 }
 
+async function loadRpaStatus() {
+    const resp = await fetch('/api/rpa/status');
+    const data = await resp.json();
+
+    const div = document.getElementById('rpa-status');
+    div.innerHTML = '';
+
+    data.platforms.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'credential-card';
+        const state = p.has_saved_session ? '已保存登录态' : '未预登录';
+        const error = p.error ? `<div class="credential-key">错误: ${p.error}</div>` : '';
+        card.innerHTML = `
+            <h3>${p.label}</h3>
+            <div class="credential-keys">
+                <span class="credential-key">状态: ${state}</span>
+                <span class="credential-key">Profile: ${p.profile_path || 'N/A'}</span>
+                ${error}
+            </div>
+            <button class="btn btn-secondary" data-rpa-login="${p.name}" onclick="startRpaLogin('${p.name}')">
+                打开预登录窗口
+            </button>
+        `;
+        div.appendChild(card);
+    });
+}
+
+async function startRpaLogin(platform) {
+    const btn = document.querySelector(`[data-rpa-login="${platform}"]`);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '等待登录完成...';
+    }
+
+    try {
+        const resp = await fetch('/api/rpa/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({platform})
+        });
+        const data = await resp.json();
+        alert(data.message || (data.success ? '预登录完成' : '预登录失败'));
+    } catch (err) {
+        alert(`预登录请求失败: ${err}`);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '打开预登录窗口';
+        }
+        loadRpaStatus();
+    }
+}
+
 async function loadPlatformRules() {
     const resp = await fetch('/api/platforms');
     const data = await resp.json();
@@ -89,6 +153,7 @@ async function loadPlatformRules() {
 }
 
 loadCredentials();
+loadRpaStatus();
 loadPlatformRules();
 </script>
 {% endblock %}
