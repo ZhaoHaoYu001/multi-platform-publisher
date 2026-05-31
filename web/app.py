@@ -170,37 +170,63 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         images = data.get("images", [])
         platforms = data.get("platforms", [])
         mode = PublishMode.REAL if data.get("real", False) else PublishMode.SIMULATE
-    
+        adapted_contents = data.get("adapted_contents", {})  # 预适配的内容 {platform: {title, content}}
+
         credentials = _creds()
         results = {}
-    
+
         for platform_name in platforms:
             adapter = registry.get(platform_name, credentials=credentials.get(platform_name, {}))
             if adapter is None:
                 results[platform_name] = {"success": False, "message": f"平台 {platform_name} 未注册"}
                 continue
-    
-            # 创建任务
+
             task_id = task_queue.enqueue(platform=platform_name, title=title)
             task_queue.update_status(task_id, "publishing")
-    
+
             try:
-                pipeline = PublishPipeline.create_default(
-                    adapter=adapter,
-                    title=title,
-                    tags=tags.split(",") if tags else None,
-                )
-                ctx = PipelineContext(
-                    metadata={
-                        "raw_content": content,
-                        "title": title,
-                        "tags": tags.split(",") if tags else [],
-                        "images": images,
-                        "mode": mode,
-                    },
-                    platform=platform_name,
-                )
-                ctx = pipeline.execute(ctx)
+                # 如果提供了预适配内容，直接使用；否则走完整 pipeline
+                if platform_name in adapted_contents:
+                    adapted = adapted_contents[platform_name]
+                    adapted_title = adapted.get("title", title)
+                    adapted_content = adapted.get("content", content)
+                    # 构造 AdaptationResult 用于投递
+                    from src.adapters.base_adapter import AdaptationResult
+                    adapted_result = AdaptationResult(
+                        title=adapted_title,
+                        content=adapted_content,
+                        warnings=[],
+                    )
+                    if mode == PublishMode.SIMULATE:
+                        result = adapter._simulate(adapted_result)
+                    else:
+                        result = adapter.deliver(adapted_result, images)
+                    results[platform_name] = {
+                        "success": result.success,
+                        "message": result.message,
+                        "url": result.url,
+                        "task_id": task_id,
+                    }
+                    status = "success" if result.success else "failed"
+                    task_queue.update_status(task_id, status, result=result)
+                    continue
+                else:
+                    pipeline = PublishPipeline.create_default(
+                        adapter=adapter,
+                        title=title,
+                        tags=tags.split(",") if tags else None,
+                    )
+                    ctx = PipelineContext(
+                        metadata={
+                            "raw_content": content,
+                            "title": title,
+                            "tags": tags.split(",") if tags else [],
+                            "images": images,
+                            "mode": mode,
+                        },
+                        platform=platform_name,
+                    )
+                    ctx = pipeline.execute(ctx)
     
                 if ctx.result:
                     results[platform_name] = {

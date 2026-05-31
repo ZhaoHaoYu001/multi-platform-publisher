@@ -88,8 +88,7 @@
         <div class="actions">
             <button onclick="saveDraft()" class="btn btn-secondary">💾 保存草稿</button>
             <button onclick="previewContent()" class="btn btn-secondary">👁 预览</button>
-            <button onclick="publishContent(false)" class="btn btn-secondary">🧪 模拟发布</button>
-            <button onclick="publishContent(true)" class="btn btn-primary">🚀 正式发布</button>
+            <button onclick="adaptAndReview()" class="btn btn-secondary" id="btn-adapt">🧪 模拟发布</button>
         </div>
     </div>
 
@@ -102,6 +101,19 @@
         <div class="platform-info-section">
             <h2>平台状态</h2>
             <div id="platform-status"></div>
+        </div>
+    </div>
+
+    <!-- 适配内容编辑区 -->
+    <div class="adapt-section" id="adapt-section" style="display:none;">
+        <h2>📝 各平台适配内容 <small style="font-weight:normal;color:#888;">（模拟发布结果，可编辑后正式发布）</small></h2>
+        <div class="adapt-tabs" id="adapt-tabs"></div>
+        <div id="adapt-content" class="adapt-box">
+            <p>请选择一个平台查看适配内容</p>
+        </div>
+        <div class="adapt-actions">
+            <button onclick="confirmPublish()" class="btn btn-primary" id="btn-confirm-publish">🚀 确认正式发布</button>
+            <button onclick="closeAdaptSection()" class="btn btn-secondary">✖ 关闭</button>
         </div>
     </div>
 
@@ -301,6 +313,164 @@ async function publishContent(real) {
             div.innerHTML += `<div class="result-item">${status} <strong>${platform}</strong>: ${result.message}${url}</div>`;
         }
     }
+}
+
+// 适配内容缓存
+const adaptedContents = {};
+
+// 模拟发布 - 获取各平台适配内容
+async function adaptAndReview() {
+    const title = document.getElementById('title').value;
+    const contentVal = document.getElementById('content').value;
+    const tags = document.getElementById('tags').value;
+    const checkboxes = document.querySelectorAll('#platform-list input:checked');
+    const platforms = Array.from(checkboxes).map(cb => cb.value);
+
+    if (!title || !contentVal) { alert('请填写标题和内容'); return; }
+    if (platforms.length === 0) { alert('请至少选择一个平台'); return; }
+
+    const btn = document.getElementById('btn-adapt');
+    btn.disabled = true;
+    btn.textContent = '⏳ 适配中...';
+
+    try {
+        const resp = await fetch('/api/preview', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, content: contentVal, tags})
+        });
+        const data = await resp.json();
+        if (data.success) {
+            Object.keys(data.previews).forEach(platform => {
+                const p = data.previews[platform];
+                if (!p.error) {
+                    adaptedContents[platform] = { title: p.title, content: p.content };
+                }
+            });
+            showAdaptSection(platforms);
+        }
+    } catch (e) {
+        showToast('获取适配内容失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🧪 模拟发布';
+    }
+}
+
+// 显示适配内容编辑区
+function showAdaptSection(platforms) {
+    const section = document.getElementById('adapt-section');
+    const tabs = document.getElementById('adapt-tabs');
+    section.style.display = 'block';
+    tabs.innerHTML = '';
+
+    const names = {
+        wechat: '微信公众号', zhihu: '知乎', bilibili: 'B站',
+        xiaohongshu: '小红书', douyin: '抖音', weibo: '微博'
+    };
+
+    const available = platforms.filter(p => adaptedContents[p]);
+    available.forEach((platform, index) => {
+        const btn = document.createElement('button');
+        btn.className = 'adapt-tab' + (index === 0 ? ' active' : '');
+        btn.textContent = names[platform] || platform;
+        btn.onclick = () => switchAdaptTab(platform, btn);
+        tabs.appendChild(btn);
+    });
+
+    if (available.length > 0) {
+        switchAdaptTab(available[0], tabs.querySelector('.adapt-tab'));
+    }
+    section.scrollIntoView({behavior: 'smooth'});
+}
+
+// 切换适配内容 Tab
+function switchAdaptTab(platform, btn) {
+    document.querySelectorAll('.adapt-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    const data = adaptedContents[platform];
+    const box = document.getElementById('adapt-content');
+    if (!data) { box.innerHTML = '<p>暂无适配内容</p>'; return; }
+
+    const safeTitle = data.title.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    const safeContent = data.content.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    box.innerHTML = `
+        <div class="adapt-field">
+            <label><strong>标题</strong> <small style="color:#888;">(${platform})</small></label>
+            <input type="text" id="adapt-title-${platform}" value="${safeTitle}" class="adapt-input"
+                   onchange="adaptedContents['${platform}'].title = this.value">
+        </div>
+        <div class="adapt-field">
+            <label><strong>正文</strong> <small style="color:#888;">(${platform})</small></label>
+            <textarea id="adapt-body-${platform}" class="adapt-textarea" rows="16"
+                      onchange="adaptedContents['${platform}'].content = this.value">${safeContent}</textarea>
+        </div>
+        <div class="adapt-meta">
+            <span>📊 标题: ${data.title.length} 字 | 正文: ${data.content.length} 字</span>
+        </div>
+    `;
+}
+
+// 确认正式发布
+async function confirmPublish() {
+    const title = document.getElementById('title').value;
+    const contentVal = document.getElementById('content').value;
+    const tags = document.getElementById('tags').value;
+    const platforms = Object.keys(adaptedContents);
+
+    if (platforms.length === 0) { alert('没有可发布的内容'); return; }
+
+    // 同步 textarea 中的编辑内容
+    platforms.forEach(platform => {
+        const titleInput = document.getElementById(`adapt-title-${platform}`);
+        const bodyTextarea = document.getElementById(`adapt-body-${platform}`);
+        if (titleInput) adaptedContents[platform].title = titleInput.value;
+        if (bodyTextarea) adaptedContents[platform].content = bodyTextarea.value;
+    });
+
+    if (!confirm(`确定正式发布到 ${platforms.length} 个平台？发布后无法撤回。`)) return;
+
+    const btn = document.getElementById('btn-confirm-publish');
+    btn.disabled = true;
+    btn.textContent = '⏳ 发布中...';
+
+    try {
+        const resp = await fetch('/api/publish', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                title, content: contentVal, tags, platforms, images: [],
+                real: true,
+                adapted_contents: adaptedContents
+            })
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            document.getElementById('result-section').style.display = 'block';
+            const div = document.getElementById('publish-results');
+            div.innerHTML = '';
+            for (const [platform, result] of Object.entries(data.results)) {
+                const status = result.success ? '✅' : '❌';
+                const url = result.url ? ` <a href="${result.url}" target="_blank">查看</a>` : '';
+                div.innerHTML += `<div class="result-item">${status} <strong>${platform}</strong>: ${result.message}${url}</div>`;
+            }
+            document.getElementById('result-section').scrollIntoView({behavior: 'smooth'});
+            showToast('发布完成');
+        }
+    } catch (e) {
+        showToast('发布失败: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '🚀 确认正式发布';
+    }
+}
+
+// 关闭适配编辑区
+function closeAdaptSection() {
+    document.getElementById('adapt-section').style.display = 'none';
 }
 
 // Toast 提示
