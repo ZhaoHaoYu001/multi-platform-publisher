@@ -1,0 +1,35 @@
+# ============================================================
+# 微博平台适配规则配置
+# ============================================================
+
+platform: weibo
+
+# ---- 标题规则 ----
+title:
+  max_length: 32
+  strategy: truncate_with_ellipsis
+  forbidden_patterns: []
+
+# ---- 内容规则 ----
+content:
+  output_format: plain
+  paragraph_style: wrap_in_p
+  image_display: centered
+  max_paragraph_length: 1000
+
+  transforms:
+    - name: markdown_to_plain
+    - name: add_hashtags
+
+# ---- 语气风格 ----
+tone:
+  style: casual
+  add_original_declaration: false
+
+# ---- 媒体资源规则 ----
+media:
+  image_ratio: null
+  image_min_size: 0
+  image_max_size_mb: 10
+  max_images: 18
+  support_gif: true

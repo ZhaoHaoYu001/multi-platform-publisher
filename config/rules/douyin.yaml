@@ -1,0 +1,45 @@
+# ============================================================
+# 抖音平台适配规则配置
+# ============================================================
+
+platform: douyin
+
+# ---- 标题规则 ----
+title:
+  max_length: 30
+  strategy: truncate_with_ellipsis
+  forbidden_patterns:
+    - '[<>]'
+  add_hashtag: true
+
+# ---- 内容规则 ----
+content:
+  output_format: plain
+  paragraph_style: compact
+  max_paragraph_length: 500
+
+  transforms:
+    - name: markdown_to_plain
+    - name: add_emoji_decorations
+    - name: add_hashtags
+    - name: add_interaction_prompt
+
+# ---- 语气风格 ----
+tone:
+  style: casual
+  emoji_map:
+    开心: "😄"
+    强调: "🔥"
+    推荐: "👍"
+    惊喜: "🎉"
+  add_interaction_prompt: true
+
+# ---- 媒体资源规则 ----
+media:
+  image_ratio: portrait
+  image_min_size: 1080
+  image_max_size_mb: 4
+  max_images: 35
+  support_gif: false
+  video_max_resolution: "1080x1920"
+  video_max_fps: 60
