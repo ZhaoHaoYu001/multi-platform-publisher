@@ -9,60 +9,37 @@ from src.ai.mimo_client import ChatMessage, ChatResponse, MiMoClient
 
 
 class TestChatMessage:
-    """ChatMessage 数据类测试."""
-
     def test_create_message(self):
         msg = ChatMessage(role="user", content="hello")
         assert msg.role == "user"
         assert msg.content == "hello"
 
-    def test_system_message(self):
-        msg = ChatMessage(role="system", content="You are a helpful assistant.")
-        assert msg.role == "system"
-
 
 class TestChatResponse:
-    """ChatResponse 数据类测试."""
-
     def test_default_values(self):
         resp = ChatResponse()
         assert resp.content == ""
         assert resp.model == ""
         assert resp.usage == {}
-        assert resp.finish_reason == ""
 
     def test_with_values(self):
-        resp = ChatResponse(
-            content="Hello!",
-            model="MiMo-7B-RL",
-            usage={"total_tokens": 100},
-            finish_reason="stop",
-        )
-        assert resp.content == "Hello!"
-        assert resp.model == "MiMo-7B-RL"
+        resp = ChatResponse(content="Hi", model="mimo-v2.5-pro", usage={"input_tokens": 10})
+        assert resp.content == "Hi"
+        assert resp.model == "mimo-v2.5-pro"
 
 
 class TestMiMoClient:
-    """MiMoClient 测试."""
-
     def test_init_defaults(self):
         client = MiMoClient()
-        assert client.model == "MiMo-7B-RL"
+        assert client.model == "mimo-v2.5-pro"
         assert client.temperature == 0.6
-        assert client.top_p == 0.95
         assert client.max_tokens == 4096
 
     def test_init_custom(self):
-        client = MiMoClient(
-            api_key="test-key",
-            base_url="https://example.com/v1",
-            model="custom-model",
-            temperature=0.8,
-        )
+        client = MiMoClient(api_key="test-key", base_url="https://example.com", model="custom")
         assert client.api_key == "test-key"
-        assert client.base_url == "https://example.com/v1"
-        assert client.model == "custom-model"
-        assert client.temperature == 0.8
+        assert client.base_url == "https://example.com"
+        assert client.model == "custom"
 
     @patch.dict(os.environ, {"MIMO_API_KEY": "", "MIMO_BASE_URL": ""})
     def test_not_available_without_key(self):
@@ -76,26 +53,22 @@ class TestMiMoClient:
         with pytest.raises(RuntimeError, match="不可用"):
             client.chat([ChatMessage(role="user", content="hello")])
 
-    def test_chat_simple_structure(self):
-        client = MiMoClient(api_key="test")
+    def test_chat_simple_with_mock(self):
+        client = MiMoClient(api_key="test", base_url="https://test.com")
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "response"
-        mock_response.choices[0].finish_reason = "stop"
-        mock_response.model = "test"
-        mock_response.usage = None
+        mock_response.content = [MagicMock(text="response text")]
+        mock_response.model = "mimo-v2.5-pro"
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage = MagicMock(input_tokens=10, output_tokens=5)
 
-        mock_openai_client = MagicMock()
-        mock_openai_client.chat.completions.create.return_value = mock_response
-
-        client._client = mock_openai_client
+        mock_anthropic_client = MagicMock()
+        mock_anthropic_client.messages.create.return_value = mock_response
+        client._client = mock_anthropic_client
         client._available = True
 
         result = client.chat_simple("hello", "you are helpful")
-        assert result == "response"
+        assert result == "response text"
 
-        call_args = mock_openai_client.chat.completions.create.call_args
-        messages = call_args.kwargs["messages"]
-        assert len(messages) == 2
-        assert messages[0]["role"] == "system"
-        assert messages[1]["role"] == "user"
+        call_args = mock_anthropic_client.messages.create.call_args
+        assert call_args.kwargs["system"] == "you are helpful"
+        assert call_args.kwargs["messages"] == [{"role": "user", "content": "hello"}]

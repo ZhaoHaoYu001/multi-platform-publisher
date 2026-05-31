@@ -9,7 +9,7 @@ python-dotenv>=0.19.0
 flask>=2.2.0
 
 # AI 大模型（用于内容生成）
-openai>=1.0.0
+anthropic>=0.25.0
 
 # RPA浏览器自动化（可选）
 playwright>=1.40.0
