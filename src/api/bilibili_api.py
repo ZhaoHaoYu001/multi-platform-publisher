@@ -120,11 +120,11 @@ class BilibiliAPI:
         # 无序列表
         content = re.sub(r'^- (.+)$', r'[list]\n[*]\1\n[/list]', content, flags=re.MULTILINE)
 
+        # 图片（必须在链接之前处理，避免 ![alt](url) 被链接正则破坏）
+        content = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'[img]\2[/img]', content)
+
         # 链接
         content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'[url=\2]\1[/url]', content)
-
-        # 图片
-        content = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', r'[img]\2[/img]', content)
 
         # 分割线
         content = re.sub(r'^---+$', '[hr]', content, flags=re.MULTILINE)

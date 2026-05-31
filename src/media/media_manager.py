@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
-from .image_processor import ImageInfo, ImageProcessor
+from .image_processor import ImageInfo, ImageProcessor, PLATFORM_REQUIREMENTS
 from .video_processor import FFmpegNotFoundError, VideoInfo, VideoProcessor
 
 
@@ -306,6 +306,13 @@ class MediaManager:
         """
         output_dir = output_dir or self._workspace_dir
         os.makedirs(output_dir, exist_ok=True)
+
+        # 校验平台名称
+        if platform not in PLATFORM_REQUIREMENTS:
+            raise ValueError(
+                f"不支持的平台: {platform}，"
+                f"支持: {list(PLATFORM_REQUIREMENTS.keys())}"
+            )
 
         results: Dict[str, str] = {}
 

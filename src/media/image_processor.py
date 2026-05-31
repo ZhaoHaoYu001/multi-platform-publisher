@@ -200,10 +200,15 @@ class ImageProcessor:
         max_size_bytes = int(max_size_mb * 1024 * 1024)
 
         with Image.open(input_path) as img:
-            # 如果是RGBA且保存为JPEG，需要转换
-            save_format = "JPEG"
-            if img.format == "PNG":
+            # 根据输出路径扩展名决定保存格式
+            ext = os.path.splitext(output_path)[1].lower()
+            if ext in (".jpg", ".jpeg"):
+                save_format = "JPEG"
+            elif ext == ".png":
                 save_format = "PNG"
+            else:
+                # 回退到输入格式，若无则默认 JPEG
+                save_format = img.format if img.format in ("JPEG", "PNG") else "JPEG"
 
             current_quality = quality
 
