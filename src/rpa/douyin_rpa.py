@@ -27,7 +27,7 @@ class DouyinRPA(RPABase):
     LOGIN_URL = "https://creator.douyin.com/"
     PUBLISH_URL = "https://creator.douyin.com/creator-micro/content/upload"
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """登录抖音创作者平台.
 
         打开登录页面，等待用户手动扫码登录。
@@ -44,6 +44,7 @@ class DouyinRPA(RPABase):
                 cookie_names=["sessionid", "sid_guard"],
                 platform_label="抖音",
                 timeout=120,
+                allow_interactive=interactive,
             )
         except Exception as e:
             print(f"登录失败: {e}")
@@ -69,8 +70,9 @@ class DouyinRPA(RPABase):
             return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            if not self.login():
-                return {"success": False, "message": "未登录抖音"}
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("抖音")}
 
             page = self._context.new_page()
             page.goto(self.PUBLISH_URL)

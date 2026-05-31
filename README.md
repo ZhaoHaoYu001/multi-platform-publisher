@@ -107,6 +107,7 @@ WEIBO_COOKIE=your_cookie
 
 # RPA浏览器登录态复用（可选，默认开启）
 MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
+MULTI_PUBLISHER_RPA_AUTO_LOGIN=false
 # MULTI_PUBLISHER_RPA_PROFILE_DIR=~/.multi_publisher/browser_profiles
 ```
 
@@ -118,7 +119,13 @@ MULTI_PUBLISHER_RPA_PERSIST_PROFILE=true
 ~/.multi_publisher/browser_profiles/<platform>
 ```
 
-第一次发布或手动登录时需要在弹出的浏览器里完成扫码/账号登录；登录态会保存到该 Profile。后续真实发布会先检测该 Profile 里的 cookie、localStorage、IndexedDB 等浏览器状态，能识别已登录状态时会直接进入发布流程，不再反复要求输入账号密码。
+建议在 Web 管理面板的“设置 → RPA预登录”中提前打开目标平台的登录页，完成一次扫码/账号/验证码登录；登录态会保存到该 Profile。后续真实发布会先检测该 Profile 里的 cookie、localStorage、IndexedDB 等浏览器状态，能识别已登录状态时会直接进入发布流程，不再反复要求输入账号密码。
+
+为避免项目演示或正式发布时被登录流程打断，`MULTI_PUBLISHER_RPA_AUTO_LOGIN` 默认关闭。登录态缺失或过期时，真实发布会快速返回提示，要求先到设置页重新预登录；如果你希望发布时仍然自动弹出登录等待流程，可在 `.env` 中设置：
+
+```env
+MULTI_PUBLISHER_RPA_AUTO_LOGIN=true
+```
 
 如需禁用该行为，可在 `.env` 中设置：
 

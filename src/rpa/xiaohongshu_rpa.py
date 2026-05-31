@@ -27,7 +27,7 @@ class XiaohongshuRPA(RPABase):
         """
         super().__init__(platform_name="xiaohongshu", headless=headless, **kwargs)
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """执行小红书登录.
 
         打开小红书创作者中心，等待用户手动扫码或输入密码登录。
@@ -44,6 +44,7 @@ class XiaohongshuRPA(RPABase):
                 url=self.PUBLISH_URL,
                 cookie_names=["web_session"],
                 platform_label="小红书",
+                allow_interactive=interactive,
             )
         except Exception as e:
             print(f"[RPA-小红书] 登录失败: {e}")
@@ -72,9 +73,10 @@ class XiaohongshuRPA(RPABase):
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态
-            if not self.login():
-                return {"success": False, "message": "未登录小红书"}
+            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("小红书")}
 
             # 访问发布页面
             print("[RPA-小红书] 正在打开发布页面...")

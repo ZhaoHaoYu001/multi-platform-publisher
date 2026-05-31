@@ -27,7 +27,7 @@ class ZhihuRPA(RPABase):
         """
         super().__init__(platform_name="zhihu", headless=headless, **kwargs)
 
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """执行知乎登录.
 
         打开知乎首页，等待用户手动扫码或输入密码登录。
@@ -44,6 +44,7 @@ class ZhihuRPA(RPABase):
                 url=self.HOME_URL,
                 cookie_names=["z_c0"],
                 platform_label="知乎",
+                allow_interactive=interactive,
             )
         except Exception as e:
             print(f"[RPA-知乎] 登录失败: {e}")
@@ -72,9 +73,10 @@ class ZhihuRPA(RPABase):
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态
-            if not self.login():
-                return {"success": False, "message": "未登录知乎"}
+            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
+            allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
+            if not self.login(interactive=allow_login_prompt):
+                return {"success": False, "message": self.login_required_message("知乎")}
 
             # 访问写文章页面
             print("[RPA-知乎] 正在打开写文章页面...")

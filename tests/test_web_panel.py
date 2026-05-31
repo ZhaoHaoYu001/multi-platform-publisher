@@ -69,3 +69,33 @@ def test_publish_defaults_to_simulate():
     assert data["success"] is True
     assert data["results"]["wechat"]["success"] is True
     assert "[模拟发布]" in data["results"]["wechat"]["message"]
+
+
+def test_rpa_status_endpoint_reports_prelogin_profiles(monkeypatch, tmp_path):
+    monkeypatch.setenv("MULTI_PUBLISHER_RPA_PROFILE_DIR", str(tmp_path / "profiles"))
+
+    app = create_app()
+    app.config["TESTING"] = True
+    response = app.test_client().get("/api/rpa/status")
+    data = response.get_json()
+
+    assert response.status_code == 200
+    assert data["success"] is True
+    assert {p["name"] for p in data["platforms"]} == {
+        "zhihu",
+        "bilibili",
+        "xiaohongshu",
+        "douyin",
+        "weibo",
+    }
+    assert all(str(tmp_path / "profiles") in p["profile_path"] for p in data["platforms"])
+
+
+def test_rpa_login_rejects_unknown_platform():
+    app = create_app()
+    app.config["TESTING"] = True
+    response = app.test_client().post("/api/rpa/login", json={"platform": "unknown"})
+    data = response.get_json()
+
+    assert response.status_code == 400
+    assert data["success"] is False

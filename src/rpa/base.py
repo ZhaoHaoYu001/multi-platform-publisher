@@ -32,6 +32,7 @@ class RPABase(ABC):
         profile_dir: Optional[str] = None,
         use_persistent_profile: bool = True,
         login_timeout: int = 300,
+        auto_login: Optional[bool] = None,
     ) -> None:
         """初始化RPA基类.
 
@@ -44,6 +45,8 @@ class RPABase(ABC):
                 MULTI_PUBLISHER_RPA_PROFILE_DIR，未配置时使用用户目录。
             use_persistent_profile: 是否复用持久化浏览器Profile。
             login_timeout: 等待用户首次登录的秒数。
+            auto_login: 发布时是否允许弹出登录等待流程。默认读取
+                MULTI_PUBLISHER_RPA_AUTO_LOGIN，未配置时关闭。
         """
         self.platform_name = platform_name or getattr(self, "PLATFORM", self.__class__.__name__.lower())
         self.headless = headless
@@ -51,6 +54,12 @@ class RPABase(ABC):
         self.screenshot_dir = screenshot_dir
         self.cookie_file = os.path.join(cookie_dir, f"{self.platform_name}_cookies.json")
         self.login_timeout = login_timeout
+        env_auto_login = os.getenv("MULTI_PUBLISHER_RPA_AUTO_LOGIN", "false").lower()
+        self.auto_login = (
+            auto_login
+            if auto_login is not None
+            else env_auto_login in {"1", "true", "yes", "on"}
+        )
 
         env_persist = os.getenv("MULTI_PUBLISHER_RPA_PERSIST_PROFILE", "true").lower()
         self.use_persistent_profile = use_persistent_profile and env_persist not in {
@@ -197,12 +206,43 @@ class RPABase(ABC):
             return False
         return any(cookie.get("name") in expected for cookie in cookies)
 
+    def has_saved_session(self) -> bool:
+        """检查本地是否已有可复用的RPA登录材料."""
+        if os.path.exists(self.cookie_file):
+            return True
+
+        if not os.path.isdir(self.profile_path):
+            return False
+
+        try:
+            return any(os.scandir(self.profile_path))
+        except OSError:
+            return False
+
+    def session_status(self) -> dict:
+        """返回设置页可展示的RPA登录态信息."""
+        return {
+            "platform": self.platform_name,
+            "has_saved_session": self.has_saved_session(),
+            "profile_path": self.profile_path,
+            "cookie_file": self.cookie_file,
+            "auto_login": self.auto_login,
+        }
+
+    def login_required_message(self, platform_label: str) -> str:
+        """生成真实发布缺少登录态时的提示文案."""
+        return (
+            f"{platform_label} 未检测到可复用登录态。请先到设置页执行 RPA 预登录，"
+            "完成扫码/验证码后再发起真实发布；发布流程将直接复用该浏览器 Profile。"
+        )
+
     def ensure_logged_in(
         self,
         url: str,
         cookie_names: Iterable[str],
         platform_label: str,
         timeout: Optional[int] = None,
+        allow_interactive: Optional[bool] = None,
     ) -> bool:
         """复用已登录Profile，必要时等待用户首次手动登录.
 
@@ -211,6 +251,7 @@ class RPABase(ABC):
             cookie_names: 平台登录Cookie名列表。
             platform_label: 用于日志输出的平台中文名。
             timeout: 等待首次登录的秒数。
+            allow_interactive: 是否允许打开登录页并等待用户操作。
 
         Returns:
             是否已经登录。
@@ -221,6 +262,14 @@ class RPABase(ABC):
         if self.has_login_cookies(cookie_names):
             print(f"[RPA-{platform_label}] 已复用本地登录态: {self.profile_path}")
             return True
+
+        interactive = self.auto_login if allow_interactive is None else allow_interactive
+        if isinstance(interactive, str):
+            interactive = interactive.lower() in {"1", "true", "yes", "on"}
+        if not interactive:
+            print(f"[RPA-{platform_label}] 未检测到登录态，已跳过发布时登录等待。")
+            print(f"[RPA-{platform_label}] 请先在设置页完成 RPA 预登录: {self.profile_path}")
+            return False
 
         try:
             self._page.goto(url, wait_until="domcontentloaded")
@@ -282,7 +331,7 @@ class RPABase(ABC):
             return ""
 
     @abstractmethod
-    def login(self) -> bool:
+    def login(self, interactive: bool = True) -> bool:
         """执行登录操作.
 
         子类必须实现此方法。
