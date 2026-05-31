@@ -93,17 +93,15 @@ class TestVideoInfoExtraction:
         with pytest.raises(FileNotFoundError):
             processor.get_video_info("nonexistent.mp4")
 
-    @patch("subprocess.run")
-    def test_get_video_info_no_ffmpeg(self, mock_run, processor):
+    def test_get_video_info_no_ffmpeg(self, processor):
         """测试ffmpeg未安装."""
-        mock_run.side_effect = FileNotFoundError()
-        with pytest.raises(FFmpegNotFoundError):
-            processor.get_video_info("test.mp4")
+        with patch("src.media.video_processor.os.path.exists", return_value=True), \
+             patch.object(processor, "check_ffmpeg", return_value=False):
+            with pytest.raises(FFmpegNotFoundError):
+                processor.get_video_info("test.mp4")
 
-    @patch("subprocess.run")
-    def test_get_video_info_success(self, mock_run, processor):
+    def test_get_video_info_success(self, processor):
         """测试成功获取视频信息."""
-        # 模拟ffprobe输出
         mock_output = """{
             "streams": [
                 {
@@ -121,16 +119,19 @@ class TestVideoInfoExtraction:
             }
         }"""
 
-        mock_run.side_effect = [
-            MagicMock(returncode=0),  # check_ffmpeg
-            MagicMock(returncode=0, stdout=mock_output),  # ffprobe
-        ]
+        with patch("src.media.video_processor.os.path.exists", return_value=True), \
+             patch("src.media.video_processor.os.path.getsize", return_value=10485760), \
+             patch("src.media.video_processor.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout="", stderr=""),  # check_ffmpeg
+                MagicMock(returncode=0, stdout=mock_output, stderr=""),  # ffprobe
+            ]
 
-        info = processor.get_video_info("test.mp4")
-        assert info.width == 1920
-        assert info.height == 1080
-        assert info.fps == 30.0
-        assert info.duration == 120.5
+            info = processor.get_video_info("test.mp4")
+            assert info.width == 1920
+            assert info.height == 1080
+            assert info.fps == 30.0
+            assert info.duration == 120.5
 
     def test_is_valid_video_not_exists(self, processor):
         """测试无效视频文件."""
@@ -162,28 +163,29 @@ class TestVideoCompression:
         )
         assert result == "output.mp4"
 
-    @patch("subprocess.run")
-    def test_compress_with_target_size(self, mock_run, processor):
+    def test_compress_with_target_size(self, processor):
         """测试指定目标大小压缩."""
-        # 模拟get_video_info的返回
         mock_output = """{
             "streams": [{"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "30/1"}],
             "format": {"duration": "120.0", "size": "10485760", "format_name": "mp4", "bit_rate": "5000000"}
         }"""
 
-        mock_run.side_effect = [
-            MagicMock(returncode=0),  # check_ffmpeg (get_video_info)
-            MagicMock(returncode=0, stdout=mock_output),  # ffprobe
-            MagicMock(returncode=0),  # check_ffmpeg (compress)
-            MagicMock(returncode=0),  # compress
-        ]
+        with patch("src.media.video_processor.os.path.exists", return_value=True), \
+             patch("src.media.video_processor.os.path.getsize", return_value=10485760), \
+             patch("src.media.video_processor.subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=0, stdout="", stderr=""),  # check_ffmpeg (compress_video)
+                MagicMock(returncode=0, stdout="", stderr=""),  # check_ffmpeg (get_video_info)
+                MagicMock(returncode=0, stdout=mock_output, stderr=""),  # ffprobe
+                MagicMock(returncode=0, stdout="", stderr=""),  # compress
+            ]
 
-        result = processor.compress_video(
-            "input.mp4",
-            "output.mp4",
-            target_size_mb=50,
-        )
-        assert result == "output.mp4"
+            result = processor.compress_video(
+                "input.mp4",
+                "output.mp4",
+                target_size_mb=50,
+            )
+            assert result == "output.mp4"
 
 
 class TestThumbnailExtraction:
