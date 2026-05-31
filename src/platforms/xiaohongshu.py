@@ -221,25 +221,49 @@ class XiaohongshuPlatform(PlatformBase):
         Returns:
             发布结果
         """
-        # TODO: 实现实际的小红书API调用
-        api_info = (
-            "小红书发布需要以下步骤：\n"
-            "1. 验证登录: POST /api/sns/web/v1/login/activate\n"
-            "2. 上传图片: POST /api/sns/web/v1/upload/photo\n"
-            "3. 发布笔记: POST /api/sns/web/v1/feed"
-        )
+        # 凭证检查
+        if not self.cookie:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未配置小红书凭证（cookie）",
+            )
 
-        return PublishResult(
-            success=True,
-            platform=self.name,
-            message=f"[小红书] 待实现: {api_info}",
-            raw_response={
-                "title": title,
-                "content": content[:100] + "..." if len(content) > 100 else content,
-                "images": images,
-                "api_required": True,
-            },
-        )
+        try:
+            from ..api.xiaohongshu_api import XiaohongshuAPI
+
+            api = XiaohongshuAPI(cookie=self.cookie)
+
+            # 上传图片
+            image_urls = []
+            for img_path in images:
+                url = api.upload_image(img_path)
+                if url:
+                    image_urls.append(url)
+
+            # 提取话题标签
+            topics = kwargs.get("topics", [])
+
+            # 发布
+            result = api.create_and_publish(
+                title=title,
+                content=content,
+                image_urls=image_urls,
+                topics=topics,
+            )
+
+            return PublishResult(
+                success=result["success"],
+                platform=self.name,
+                message=result["message"],
+                raw_response=result,
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"小红书发布异常: {e}",
+            )
 
     def check_login(self) -> bool:
         """检查小红书登录状态.
@@ -250,5 +274,10 @@ class XiaohongshuPlatform(PlatformBase):
         if not self.cookie:
             return False
 
-        # TODO: 实现实际的登录检查
-        return False
+        try:
+            from ..api.xiaohongshu_api import XiaohongshuAPI
+
+            api = XiaohongshuAPI(cookie=self.cookie)
+            return api.check_login()
+        except Exception:
+            return False

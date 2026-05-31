@@ -89,35 +89,67 @@ class ZhihuPlatform(PlatformBase):
         Returns:
             发布结果
         """
-        # TODO: 实现实际的知乎API调用
-        api_info = (
-            "知乎发布需要以下步骤：\n"
-            "1. 登录获取cookie: POST /api/v3/sign_in\n"
-            "2. 上传图片: POST /api/v4/upload_images\n"
-            "3. 创建文章: POST /api/v4/articles\n"
-            "4. 发布文章: PUT /api/v4/articles/{id}/publish"
-        )
+        # 凭证检查
+        if not self.username or not self.password:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message="未配置知乎凭证（username/password）",
+            )
 
-        return PublishResult(
-            success=True,
-            platform=self.name,
-            message=f"[知乎] 待实现: {api_info}",
-            raw_response={
-                "title": title,
-                "content": content[:100] + "..." if len(content) > 100 else content,
-                "images": images,
-                "api_required": True,
-            },
-        )
+        try:
+            from ..api.zhihu_api import ZhihuAPI
 
-    def login(self) -> bool:
-        """知乎登录.
+            api = ZhihuAPI(username=self.username, password=self.password)
+
+            # 上传图片
+            image_urls = []
+            for img_path in images:
+                url = api.upload_image(img_path)
+                if url:
+                    image_urls.append(url)
+
+            # 发布
+            result = api.create_and_publish(
+                title=title,
+                content=content,
+                image_urls=image_urls,
+            )
+
+            return PublishResult(
+                success=result["success"],
+                platform=self.name,
+                message=result["message"],
+                raw_response=result,
+            )
+        except Exception as e:
+            return PublishResult(
+                success=False,
+                platform=self.name,
+                message=f"知乎发布异常: {e}",
+            )
+
+    def check_login(self) -> bool:
+        """检查知乎登录状态.
 
         Returns:
-            登录是否成功
+            是否已登录
         """
         if not self.username or not self.password:
             return False
 
-        # TODO: 实现实际的登录逻辑
-        return False
+        try:
+            from ..api.zhihu_api import ZhihuAPI
+
+            api = ZhihuAPI(username=self.username, password=self.password)
+            return api.check_login()
+        except Exception:
+            return False
+
+    def login(self) -> bool:
+        """知乎登录（委托 check_login）.
+
+        Returns:
+            登录是否成功
+        """
+        return self.check_login()
