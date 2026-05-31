@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container single-col">
+    <div class="section">
+        <h2>平台凭证配置</h2>
+        <p class="section-desc">凭证通过 <code>.env</code> 文件配置。此页面仅显示各平台凭证的配置状态。</p>
+
+        <div id="credentials-status"></div>
+    </div>
+
+    <div class="section">
+        <h2>环境变量模板</h2>
+        <p class="section-desc">在项目根目录创建 <code>.env</code> 文件，填入以下内容：</p>
+        <pre class="code-block"># 微信公众号
+WECHAT_APP_ID=your_app_id
+WECHAT_APP_SECRET=your_app_secret
+
+# 知乎
+ZHIHU_USERNAME=your_username
+ZHIHU_PASSWORD=your_password
+
+# B站
+BILIBILI_SESS_DATA=your_sess_data
+BILIBILI_CSRF=your_csrf
+
+# 小红书
+XIAOHONGSHU_COOKIE=your_cookie
+
+# 抖音（可选）
+DOUYIN_COOKIE=your_cookie
+
+# 微博（可选）
+WEIBO_COOKIE=your_cookie</pre>
+    </div>
+
+    <div class="section">
+        <h2>平台规则</h2>
+        <div id="platform-rules"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadCredentials() {
+    const resp = await fetch('/api/credentials');
+    const data = await resp.json();
+
+    const div = document.getElementById('credentials-status');
+    div.innerHTML = '';
+
+    for (const [platform, keys] of Object.entries(data.credentials)) {
+        const card = document.createElement('div');
+        card.className = 'credential-card';
+        let keysHtml = '';
+        for (const [key, configured] of Object.entries(keys)) {
+            const icon = configured ? '✅' : '❌';
+            keysHtml += `<span class="credential-key">${icon} ${key}</span>`;
+        }
+        card.innerHTML = `
+            <h3>${platform}</h3>
+            <div class="credential-keys">${keysHtml}</div>
+        `;
+        div.appendChild(card);
+    }
+}
+
+async function loadPlatformRules() {
+    const resp = await fetch('/api/platforms');
+    const data = await resp.json();
+
+    const div = document.getElementById('platform-rules');
+    div.innerHTML = '';
+
+    data.platforms.forEach(p => {
+        const card = document.createElement('div');
+        card.className = 'rule-card';
+        card.innerHTML = `
+            <h3>${p.name}</h3>
+            <div class="rule-details">
+                <span>格式: ${p.content_type || 'N/A'}</span>
+                <span>标题限制: ${p.max_title_length || 'N/A'}字</span>
+                <span>凭证: ${p.has_credentials ? '✅ 已配置' : '⚠️ 未配置'}</span>
+            </div>
+        `;
+        div.appendChild(card);
+    });
+}
+
+loadCredentials();
+loadPlatformRules();
+</script>
+{% endblock %}

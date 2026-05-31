@@ -12,13 +12,32 @@
         </div>
 
         <div class="form-group">
-            <label for="content">正文</label>
-            <textarea id="content" rows="15" placeholder="支持 Markdown 格式"></textarea>
+            <label for="content">正文 <small>(支持 Markdown 格式)</small></label>
+            <div class="editor-toolbar">
+                <button onclick="insertMd('**', '**')" title="粗体">B</button>
+                <button onclick="insertMd('*', '*')" title="斜体"><i>I</i></button>
+                <button onclick="insertMd('`', '`')" title="代码">&lt;/&gt;</button>
+                <button onclick="insertMd('\\n## ', '\\n')" title="标题">H</button>
+                <button onclick="insertMd('[', '](url)')" title="链接">🔗</button>
+                <button onclick="insertMd('\\n> ', '\\n')" title="引用">❝</button>
+                <button onclick="insertMd('\\n- ', '\\n')" title="列表">☰</button>
+                <button onclick="insertMd('\\n```\\n', '\\n```\\n')" title="代码块">{ }</button>
+            </div>
+            <textarea id="content" rows="18" placeholder="在这里输入 Markdown 内容..."></textarea>
         </div>
 
-        <div class="form-group">
-            <label for="tags">标签（逗号分隔）</label>
-            <input type="text" id="tags" placeholder="技术, Python, 教程">
+        <div class="form-row">
+            <div class="form-group flex-1">
+                <label for="tags">标签（逗号分隔）</label>
+                <input type="text" id="tags" placeholder="技术, Python, 教程">
+            </div>
+            <div class="form-group">
+                <label>图片</label>
+                <div class="image-upload">
+                    <input type="file" id="image-input" accept="image/*" multiple onchange="handleImages(this)">
+                    <span id="image-count">未选择图片</span>
+                </div>
+            </div>
         </div>
 
         <div class="form-group">
@@ -32,24 +51,32 @@
         </div>
 
         <div class="actions">
-            <button onclick="saveDraft()" class="btn btn-secondary">保存草稿</button>
-            <button onclick="previewContent()" class="btn btn-secondary">预览</button>
-            <button onclick="publishContent()" class="btn btn-primary">发布</button>
+            <button onclick="saveDraft()" class="btn btn-secondary">💾 保存草稿</button>
+            <button onclick="previewContent()" class="btn btn-secondary">👁 预览</button>
+            <button onclick="publishContent(false)" class="btn btn-secondary">🧪 模拟发布</button>
+            <button onclick="publishContent(true)" class="btn btn-primary">🚀 正式发布</button>
         </div>
     </div>
 
-    <div class="drafts-section">
-        <h2>草稿列表</h2>
-        <div id="draft-list"></div>
+    <div class="sidebar">
+        <div class="drafts-section">
+            <h2>草稿列表</h2>
+            <div id="draft-list"></div>
+        </div>
+
+        <div class="platform-info-section">
+            <h2>平台状态</h2>
+            <div id="platform-status"></div>
+        </div>
     </div>
 
     <div class="preview-section" id="preview-section" style="display:none;">
         <h2>平台预览</h2>
         <div class="preview-tabs">
-            <button class="tab active" onclick="switchTab('wechat')">微信</button>
-            <button class="tab" onclick="switchTab('zhihu')">知乎</button>
-            <button class="tab" onclick="switchTab('bilibili')">B站</button>
-            <button class="tab" onclick="switchTab('xiaohongshu')">小红书</button>
+            <button class="tab active" onclick="switchTab('wechat', this)">微信</button>
+            <button class="tab" onclick="switchTab('zhihu', this)">知乎</button>
+            <button class="tab" onclick="switchTab('bilibili', this)">B站</button>
+            <button class="tab" onclick="switchTab('xiaohongshu', this)">小红书</button>
         </div>
         <div id="preview-content" class="preview-box"></div>
     </div>
@@ -64,11 +91,31 @@
 {% block scripts %}
 <script>
 const previews = {};
+let selectedImages = [];
 
 // 标题字数统计
 document.getElementById('title').addEventListener('input', function() {
     document.getElementById('title-hint').textContent = this.value.length + ' / 100';
 });
+
+// Markdown 工具栏
+function insertMd(before, after) {
+    const ta = document.getElementById('content');
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const sel = ta.value.substring(start, end);
+    ta.value = ta.value.substring(0, start) + before + sel + after + ta.value.substring(end);
+    ta.focus();
+    ta.selectionStart = start + before.length;
+    ta.selectionEnd = start + before.length + sel.length;
+}
+
+// 图片处理
+function handleImages(input) {
+    selectedImages = Array.from(input.files);
+    document.getElementById('image-count').textContent =
+        selectedImages.length > 0 ? `已选择 ${selectedImages.length} 张图片` : '未选择图片';
+}
 
 // 加载草稿列表
 async function loadDrafts() {
@@ -84,13 +131,25 @@ async function loadDrafts() {
         const div = document.createElement('div');
         div.className = 'draft-item';
         div.innerHTML = `
-            <span>${d.title || '无标题'}</span>
+            <span title="${d.title || '无标题'}">${d.title || '无标题'}</span>
             <div class="draft-actions">
-                <button onclick="loadDraft('${d.id}')">加载</button>
-                <button onclick="deleteDraft('${d.id}')">删除</button>
+                <button onclick="loadDraft('${d.id}')" title="加载">📂</button>
+                <button onclick="deleteDraft('${d.id}')" title="删除">🗑</button>
             </div>
         `;
         list.appendChild(div);
+    });
+}
+
+// 加载平台状态
+async function loadPlatformStatus() {
+    const resp = await fetch('/api/platforms');
+    const data = await resp.json();
+    const div = document.getElementById('platform-status');
+    div.innerHTML = '';
+    data.platforms.forEach(p => {
+        const status = p.has_credentials ? '✅' : '⚠️';
+        div.innerHTML += `<div class="platform-status-item">${status} <strong>${p.name}</strong> <small>${p.content_type || ''}</small></div>`;
     });
 }
 
@@ -106,7 +165,7 @@ async function saveDraft() {
     });
     const data = await resp.json();
     if (data.success) {
-        alert('草稿已保存');
+        showToast('草稿已保存');
         loadDrafts();
     }
 }
@@ -119,6 +178,7 @@ async function loadDraft(id) {
         document.getElementById('title').value = data.draft.title || '';
         document.getElementById('content').value = data.draft.content || '';
         document.getElementById('tags').value = data.draft.tags || '';
+        showToast('草稿已加载');
     }
 }
 
@@ -133,30 +193,46 @@ async function deleteDraft(id) {
 async function previewContent() {
     const title = document.getElementById('title').value;
     const content = document.getElementById('content').value;
+    const tags = document.getElementById('tags').value;
     const resp = await fetch('/api/preview', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, content})
+        body: JSON.stringify({title, content, tags})
     });
     const data = await resp.json();
     if (data.success) {
         Object.assign(previews, data.previews);
         document.getElementById('preview-section').style.display = 'block';
-        switchTab('wechat');
+        switchTab('wechat', document.querySelector('.tab'));
     }
 }
 
 // 切换预览Tab
-function switchTab(platform) {
+function switchTab(platform, btn) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    event.target.classList.add('active');
-    document.getElementById('preview-content').innerHTML = previews[platform] || '<p>暂无预览</p>';
+    btn.classList.add('active');
+    const p = previews[platform];
+    if (!p) {
+        document.getElementById('preview-content').innerHTML = '<p>暂无预览</p>';
+        return;
+    }
+    if (p.error) {
+        document.getElementById('preview-content').innerHTML = `<p class="error">${p.error}</p>`;
+        return;
+    }
+    let html = `<div class="preview-title"><strong>标题：</strong>${escapeHtml(p.title)}</div>`;
+    if (p.warnings && p.warnings.length > 0) {
+        html += `<div class="preview-warnings">⚠️ ${p.warnings.join(' | ')}</div>`;
+    }
+    html += `<div class="preview-body"><pre>${escapeHtml(p.content)}</pre></div>`;
+    document.getElementById('preview-content').innerHTML = html;
 }
 
 // 发布
-async function publishContent() {
+async function publishContent(real) {
     const title = document.getElementById('title').value;
     const content = document.getElementById('content').value;
+    const tags = document.getElementById('tags').value;
     const checkboxes = document.querySelectorAll('#platform-list input:checked');
     const platforms = Array.from(checkboxes).map(cb => cb.value);
 
@@ -169,10 +245,12 @@ async function publishContent() {
         return;
     }
 
+    if (real && !confirm('确定正式发布？发布后无法撤回。')) return;
+
     const resp = await fetch('/api/publish', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, content, platforms, images: []})
+        body: JSON.stringify({title, content, tags, platforms, images: [], real})
     });
     const data = await resp.json();
 
@@ -182,12 +260,30 @@ async function publishContent() {
         div.innerHTML = '';
         for (const [platform, result] of Object.entries(data.results)) {
             const status = result.success ? '✅' : '❌';
-            div.innerHTML += `<div class="result-item">${status} <strong>${platform}</strong>: ${result.message}</div>`;
+            const url = result.url ? ` <a href="${result.url}" target="_blank">查看</a>` : '';
+            div.innerHTML += `<div class="result-item">${status} <strong>${platform}</strong>: ${result.message}${url}</div>`;
         }
     }
 }
 
-// 页面加载时获取草稿
+// Toast 提示
+function showToast(msg) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+}
+
+// HTML 转义
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 初始化
 loadDrafts();
+loadPlatformStatus();
 </script>
 {% endblock %}

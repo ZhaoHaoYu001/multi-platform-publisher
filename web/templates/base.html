@@ -10,14 +10,17 @@
     <header>
         <h1>多平台内容发布器</h1>
         <nav>
-            <a href="/">编辑</a>
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}">编辑</a>
+            <a href="/templates" class="{% if request.path == '/templates' %}active{% endif %}">模板</a>
+            <a href="/tasks" class="{% if request.path == '/tasks' %}active{% endif %}">任务</a>
+            <a href="/settings" class="{% if request.path == '/settings' %}active{% endif %}">设置</a>
         </nav>
     </header>
     <main>
         {% block content %}{% endblock %}
     </main>
     <footer>
-        <p>Multi-Platform Publisher &copy; 2026</p>
+        <p>Multi-Platform Publisher v2.0 &copy; 2026</p>
     </footer>
     {% block scripts %}{% endblock %}
 </body>

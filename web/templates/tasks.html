@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container single-col">
+    <div class="section">
+        <div class="section-header">
+            <h2>任务队列</h2>
+            <div class="section-actions">
+                <select id="status-filter" onchange="loadTasks()">
+                    <option value="">全部</option>
+                    <option value="pending">等待中</option>
+                    <option value="publishing">发布中</option>
+                    <option value="success">成功</option>
+                    <option value="failed">失败</option>
+                </select>
+                <button onclick="clearAllTasks()" class="btn btn-secondary btn-sm">清空队列</button>
+                <button onclick="loadTasks()" class="btn btn-secondary btn-sm">刷新</button>
+            </div>
+        </div>
+
+        <div id="task-list"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadTasks() {
+    const filter = document.getElementById('status-filter').value;
+    const url = filter ? `/api/tasks?status=${filter}` : '/api/tasks';
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    const list = document.getElementById('task-list');
+    if (data.tasks.length === 0) {
+        list.innerHTML = '<p class="empty">暂无任务</p>';
+        return;
+    }
+
+    list.innerHTML = '';
+    data.tasks.forEach(t => {
+        const statusMap = {
+            'pending': '⏳ 等待中',
+            'publishing': '🔄 发布中',
+            'success': '✅ 成功',
+            'failed': '❌ 失败',
+        };
+        const div = document.createElement('div');
+        div.className = `task-item task-${t.status}`;
+        div.innerHTML = `
+            <div class="task-main">
+                <span class="task-status">${statusMap[t.status] || t.status}</span>
+                <span class="task-platform"><strong>${t.platform}</strong></span>
+                <span class="task-title">${t.title || '无标题'}</span>
+            </div>
+            <div class="task-meta">
+                <small>${t.created_at || ''}</small>
+                ${t.error ? `<small class="task-error">错误: ${t.error}</small>` : ''}
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function clearAllTasks() {
+    if (!confirm('确定清空所有任务？')) return;
+    await fetch('/api/tasks', {method: 'DELETE'});
+    loadTasks();
+}
+
+// 自动刷新
+loadTasks();
+setInterval(loadTasks, 5000);
+</script>
+{% endblock %}
