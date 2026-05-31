@@ -118,15 +118,15 @@ class TestXiaohongshuPlatform:
         assert "模拟发布" in result.message
 
     def test_real_publish(self):
-        """测试真实发布（返回API提示）."""
+        """测试真实发布（无凭证返回失败）."""
         result = self.platform.publish(
             title="推荐好物",
             content="分享好用的东西",
             images=["test.jpg"],
             mode=PublishMode.REAL,
         )
-        assert result.success is True
-        assert "小红书发布需要以下步骤" in result.message
+        assert result.success is False
+        assert "未配置小红书凭证" in result.message
 
     def test_check_login_no_cookie(self):
         """测试无cookie检查登录."""
@@ -134,10 +134,10 @@ class TestXiaohongshuPlatform:
         assert result is False
 
     def test_check_login_with_cookie(self):
-        """测试有cookie检查登录（待实现）."""
-        platform = XiaohongshuPlatform(cookie="test")
+        """测试有cookie检查登录（需真实API）."""
+        platform = XiaohongshuPlatform(cookie="test_cookie_value")
         result = platform.check_login()
-        # TODO: 实现后改为 assert result is True
+        # TODO: 需要真实有效cookie才能返回True
         assert result is False
 
     def test_repr(self):

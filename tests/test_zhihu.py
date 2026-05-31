@@ -77,26 +77,26 @@ class TestZhihuPlatform:
         assert "模拟发布" in result.message
 
     def test_real_publish(self):
-        """测试真实发布（返回API提示）."""
+        """测试真实发布（无凭证返回失败）."""
         result = self.platform.publish(
             title="测试标题",
             content="测试内容",
             images=["test.jpg"],
             mode=PublishMode.REAL,
         )
-        assert result.success is True
-        assert "知乎发布需要以下步骤" in result.message
+        assert result.success is False
+        assert "未配置知乎凭证" in result.message
 
-    def test_login_no_creds(self):
+    def test_check_login_no_creds(self):
         """测试无凭证登录."""
-        result = self.platform.login()
+        result = self.platform.check_login()
         assert result is False
 
-    def test_login_with_creds(self):
-        """测试有凭证登录（待实现）."""
+    def test_check_login_with_creds(self):
+        """测试有凭证登录（需真实API）."""
         platform = ZhihuPlatform(username="user", password="pass")
-        result = platform.login()
-        # TODO: 实现后改为 assert result is True
+        result = platform.check_login()
+        # TODO: 需要真实有效凭证才能返回True
         assert result is False
 
     def test_repr(self):
