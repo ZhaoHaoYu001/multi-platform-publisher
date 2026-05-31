@@ -25,6 +25,8 @@ from src.pipeline.publish_pipeline import (
     ParseStage, PipelineContext, PublishPipeline,
 )
 from src.review.previewer import Previewer
+from src.ai.mimo_client import MiMoClient
+from src.ai.content_generator import ContentGenerator
 
 
 def create_app():
@@ -34,7 +36,7 @@ def create_app():
     # Init components
     base = os.path.join(os.path.dirname(__file__), "..")
     rule_engine = RuleEngine(rules_dir=os.path.join(base, "config", "rules"))
-    draft_manager = DraftManager(storage_dir=os.path.join(base, "drafts"))
+    draft_manager = DraftManager(drafts_dir=os.path.join(base, "drafts"))
     previewer = Previewer()
     task_queue = TaskQueue()
     image_processor = ImageProcessor()
@@ -42,6 +44,10 @@ def create_app():
     registry = AdapterRegistry(rule_engine)
     credential_store = CredentialStore()
     credential_store.load_from_env()
+
+    # 初始化 AI 内容生成器
+    mimo_client = MiMoClient()
+    content_generator = ContentGenerator(client=mimo_client)
 
     for cls in [WechatAdapter, ZhihuAdapter, BilibiliAdapter, XiaohongshuAdapter, DouyinAdapter, WeiboAdapter]:
         registry.register(cls.platform_name, cls)
@@ -51,23 +57,21 @@ def create_app():
 
     # Register routes
     _register_routes(app, registry, rule_engine, draft_manager, previewer,
-                     task_queue, image_processor, scheduler, credential_store, _creds)
+                     task_queue, image_processor, scheduler, credential_store, _creds,
+                     content_generator)
 
     return app
 
 
 def _register_routes(app, registry, rule_engine, draft_manager, previewer,
-                      task_queue, image_processor, scheduler, credential_store, _creds):
+                      task_queue, image_processor, scheduler, credential_store, _creds,
+                      content_generator=None):
     """Register all routes."""
 
     BUILTIN_TEMPLATES = [
         {"id": "tech-tutorial", "name": "技术教程", "description": "适用于技术教程类文章",
          "title_template": "{{title}}：从入门到精通",
-         "content_template": "# {{title}}
-
-## 前言
-
-在本教程中",
+         "content_template": "# {{title}}\n\n## 前言\n\n在本教程中",
          "variables": ["title", "topic", "package", "code_example", "advanced_content", "summary", "tags"]},
         {"id": "product-review", "name": "产品评测", "description": "适用于产品评测类文章",
          "title_template": "{{product}} 深度评测：{{verdict}}",
@@ -518,6 +522,72 @@ def _register_routes(app, registry, rule_engine, draft_manager, previewer,
         return jsonify({"success": True, "status": scheduler.get_status()})
     
     
+    # ──────────────────── AI 内容生成 API ────────────────────
+
+    @app.route("/api/ai/generate", methods=["POST"])
+    def ai_generate():
+        """AI 一句话生成完整文案."""
+        if content_generator is None or not content_generator.is_available:
+            return jsonify({
+                "success": False,
+                "error": "AI 生成功能不可用，请检查 MIMO_API_KEY 配置",
+            }), 503
+
+        data = request.json
+        prompt = data.get("prompt", "").strip()
+        if not prompt:
+            return jsonify({"success": False, "error": "请输入内容描述"}), 400
+
+        style = data.get("style", "general")
+        target_platform = data.get("platform")
+        title = data.get("title")
+
+        try:
+            result = content_generator.generate(
+                prompt=prompt,
+                style=style,
+                target_platform=target_platform,
+                title=title,
+            )
+            return jsonify({
+                "success": True,
+                "title": result.title,
+                "content": result.content,
+                "tags": result.tags,
+                "summary": result.summary,
+                "style": result.style,
+                "platform": result.target_platform,
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)}), 500
+
+    @app.route("/api/ai/styles", methods=["GET"])
+    def ai_styles():
+        """获取 AI 支持的内容风格列表."""
+        return jsonify({
+            "success": True,
+            "styles": content_generator.list_styles() if content_generator else {},
+        })
+
+    @app.route("/api/ai/platforms", methods=["GET"])
+    def ai_platforms():
+        """获取 AI 支持的平台特性列表."""
+        return jsonify({
+            "success": True,
+            "platforms": content_generator.list_platforms() if content_generator else {},
+        })
+
+    @app.route("/api/ai/status", methods=["GET"])
+    def ai_status():
+        """检查 AI 功能状态."""
+        available = content_generator is not None and content_generator.is_available
+        return jsonify({
+            "success": True,
+            "available": available,
+            "has_api_key": bool(os.getenv("MIMO_API_KEY")),
+            "has_base_url": bool(os.getenv("MIMO_BASE_URL")),
+        })
+
     # ──────────────────── 凭证 API ────────────────────
     
     @app.route("/api/credentials", methods=["GET"])
