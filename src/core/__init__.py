@@ -1,6 +1,5 @@
-"""核心模块，包含平台基类和管理器."""
+"""核心模块，包含基础数据结构和引擎."""
 
-from .platform_base import PlatformBase, PublishMode, PublishResult
-from .platform_manager import PlatformManager
+from .platform_base import PublishMode, PublishResult
 
-__all__ = ["PlatformBase", "PublishMode", "PublishResult", "PlatformManager"]
+__all__ = ["PublishMode", "PublishResult"]

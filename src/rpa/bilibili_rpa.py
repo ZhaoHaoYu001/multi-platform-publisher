@@ -1,189 +1,172 @@
-"""B站RPA浏览器自动化模块."""
+"""B站RPA自动化模块.
 
-import os
+使用Playwright实现B站专栏的浏览器自动化发布。
+"""
+
 import time
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from .base_rpa import BaseRPA
+from .base import RPABase
 
 
-class BilibiliRPA(BaseRPA):
-    """B站专栏RPA自动化发布.
+class BilibiliRPA(RPABase):
+    """B站RPA自动化实现.
 
-    流程:
-    1. 登录（手动/Cookie自动）
-    2. 打开专栏编辑器
-    3. 填写标题和正文
-    4. 可选上传图片/添加标签
-    5. 发布或存草稿
+    支持通过浏览器自动化登录B站并发布专栏文章。
     """
 
-    PLATFORM = "bilibili"
-    LOGIN_URL = "https://passport.bilibili.com/login"
-    HOME_URL = "www.bilibili.com"
+    HOME_URL = "https://www.bilibili.com"
+    ARTICLE_URL = "https://member.bilibili.com/platform/upload/text/edit"
 
-    def _check_login_indicator(self, page) -> bool:
-        """检查B站登录状态."""
+    def __init__(self, headless: bool = False, **kwargs) -> None:
+        """初始化B站RPA.
+
+        Args:
+            headless: 是否无头模式
+            **kwargs: 其他参数
+        """
+        super().__init__(platform_name="bilibili", headless=headless, **kwargs)
+
+    def login(self) -> bool:
+        """执行B站登录.
+
+        打开B站首页，等待用户手动扫码或输入密码登录。
+
+        Returns:
+            登录是否成功
+        """
+        if not self._page:
+            if not self.launch_browser():
+                return False
+
         try:
-            # 检查是否存在用户头像（登录标志）
-            page.wait_for_selector(".header-avatar-wrap", timeout=3000)
-            return True
-        except Exception:
+            # 访问B站
+            self._page.goto(self.HOME_URL, wait_until="domcontentloaded")
+            time.sleep(2)
+
+            # 检查是否已登录（通过Cookie）
+            cookies = self._context.cookies() if self._context else []
+            has_sess = any(c["name"] == "SESSDATA" for c in cookies)
+
+            if has_sess:
+                print("[RPA-B站] 已检测到登录状态")
+                return True
+
+            # 未登录，等待用户手动登录
+            print("[RPA-B站] 请在浏览器中手动登录B站...")
+            print("[RPA-B站] 登录完成后请按回车继续...")
+
+            # 等待登录完成（最多5分钟）
+            for _ in range(300):
+                time.sleep(1)
+                cookies = self._context.cookies() if self._context else []
+                if any(c["name"] == "SESSDATA" for c in cookies):
+                    print("[RPA-B站] 登录成功！")
+                    self._save_cookies()
+                    return True
+
+            print("[RPA-B站] 登录超时")
+            return False
+
+        except Exception as e:
+            print(f"[RPA-B站] 登录失败: {e}")
             return False
 
     def publish(
         self,
         title: str,
         content: str,
-        images: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None,
-        save_as_draft: bool = True,
-    ) -> Dict[str, Any]:
-        """发布B站专栏文章.
+        images: list[str],
+        **kwargs,
+    ) -> dict:
+        """通过浏览器自动化发布B站专栏.
 
         Args:
             title: 文章标题
-            content: 文章内容（HTML格式）
+            content: 文章内容（Markdown格式）
             images: 图片路径列表
-            tags: 标签列表
-            save_as_draft: 是否仅保存为草稿
+            **kwargs: 其他参数（category, tags, summary）
 
         Returns:
             发布结果字典
         """
-        result: Dict[str, Any] = {
-            "success": False,
-            "message": "",
-        }
+        if not self._page:
+            if not self.launch_browser():
+                return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录
-            if not self.check_login():
-                if not self.login():
-                    result["message"] = "未登录或登录失败"
-                    return result
+            # 检查登录状态
+            if not self.login():
+                return {"success": False, "message": "未登录B站"}
 
-            page = self._new_page()
-
-            # 打开专栏编辑器
-            print("[RPA] 正在打开B站专栏编辑器...")
-            page.goto(
-                "https://member.bilibili.com/article-text/home",
-                wait_until="domcontentloaded",
-            )
+            # 访问专栏编辑页面
+            print("[RPA-B站] 正在打开专栏编辑页面...")
+            self._page.goto(self.ARTICLE_URL, wait_until="domcontentloaded")
             time.sleep(3)
 
-            # 检查是否成功进入编辑器
-            if "passport.bilibili.com" in page.url:
-                # Cookie过期，重新登录
-                self._context.close()
-                self._create_context()
-                page = self._new_page()
-                if not self.login():
-                    result["message"] = "重新登录失败"
-                    return result
-                page.goto(
-                    "https://member.bilibili.com/article-text/home",
-                    wait_until="domcontentloaded",
-                )
-                time.sleep(3)
-
             # 填写标题
-            print("[RPA] 正在填写标题...")
-            title_input = page.locator("#article-title input, .title-input input").first
-            title_input.click()
-            title_input.fill("")
-            title_input.type(title, delay=50)
-            time.sleep(1)
-
-            # 填写正文（通过contenteditable div）
-            print("[RPA] 正在填写正文...")
-            editor = page.locator("#article-content .ql-editor, .editor-content .ql-editor").first
-            editor.click()
-            # 使用JavaScript注入HTML内容
-            page.evaluate(
-                """(html) => {
-                    const editor = document.querySelector('#article-content .ql-editor') ||
-                                   document.querySelector('.editor-content .ql-editor');
-                    if (editor) editor.innerHTML = html;
-                }""",
-                content,
-            )
-            time.sleep(1)
-
-            # 上传图片
-            if images:
-                print(f"[RPA] 正在上传 {len(images)} 张图片...")
-                for img_path in images:
-                    if os.path.exists(img_path):
-                        try:
-                            # 查找上传按钮
-                            upload_input = page.locator(
-                                'input[type="file"][accept*="image"]'
-                            ).first
-                            upload_input.set_input_files(img_path)
-                            time.sleep(2)  # 等待上传完成
-                        except Exception as e:
-                            print(f"[RPA] 图片上传失败: {e}")
-
-            # 添加标签
-            if tags:
-                print("[RPA] 正在添加标签...")
-                for tag in tags[:5]:  # B站最多5个标签
-                    try:
-                        tag_input = page.locator(
-                            '.tag-input input, input[placeholder*="标签"]'
-                        ).first
-                        tag_input.click()
-                        tag_input.fill(tag)
-                        tag_input.press("Enter")
-                        time.sleep(0.5)
-                    except Exception:
-                        pass
-
-            # 发布或存草稿
-            if save_as_draft:
-                print("[RPA] 正在保存草稿...")
-                try:
-                    draft_btn = page.locator(
-                        'button:has-text("存草稿"), .save-draft-btn'
-                    ).first
-                    draft_btn.click()
-                    time.sleep(2)
-                    result["success"] = True
-                    result["message"] = "B站专栏已保存为草稿（RPA）"
-                except Exception as e:
-                    result["message"] = f"保存草稿失败: {e}"
+            print(f"[RPA-B站] 填写标题: {title[:30]}...")
+            title_input = self._page.locator('input[placeholder*="标题"], .title-input, #title')
+            if title_input.count() > 0:
+                title_input.first.fill(title)
             else:
-                print("[RPA] 正在发布...")
-                try:
-                    publish_btn = page.locator(
-                        'button:has-text("发布"), .submit-btn'
-                    ).first
-                    publish_btn.click()
-                    time.sleep(3)
+                # 尝试其他选择器
+                self._page.keyboard.type(title)
 
-                    # 检查是否弹出确认框
-                    try:
-                        confirm_btn = page.locator(
-                            'button:has-text("确认"), .confirm-btn'
-                        ).first
-                        confirm_btn.click(timeout=5000)
-                        time.sleep(2)
-                    except Exception:
-                        pass
+            time.sleep(1)
 
-                    result["success"] = True
-                    result["message"] = "B站专栏已发布（RPA）"
-                except Exception as e:
-                    result["message"] = f"发布失败: {e}"
+            # 填写内容
+            print("[RPA-B站] 填写内容...")
+            content_editor = self._page.locator(
+                '.ql-editor, .editor-content, [contenteditable="true"]'
+            )
+            if content_editor.count() > 0:
+                content_editor.first.click()
+                # 将内容逐行输入
+                for line in content.split('\n'):
+                    if line.strip():
+                        self._page.keyboard.type(line)
+                    self._page.keyboard.press("Enter")
+            time.sleep(2)
 
-            # 保存最新Cookie
-            self._save_cookies()
+            # 上传图片（如果有）
+            if images:
+                print(f"[RPA-B站] 上传 {len(images)} 张图片...")
+                file_input = self._page.locator('input[type="file"]')
+                if file_input.count() > 0:
+                    for img_path in images:
+                        try:
+                            file_input.first.set_input_files(img_path)
+                            time.sleep(2)
+                        except Exception as e:
+                            print(f"[RPA-B站] 图片上传失败: {e}")
+
+            # 截图保存
+            self.take_screenshot("before_publish")
+
+            # 点击发布按钮
+            print("[RPA-B站] 正在发布...")
+            publish_btn = self._page.locator(
+                'button:has-text("发布"), button:has-text("提交"), .submit-btn'
+            )
+            if publish_btn.count() > 0:
+                publish_btn.first.click()
+                time.sleep(5)
+
+                # 截图保存结果
+                self.take_screenshot("after_publish")
+
+                return {
+                    "success": True,
+                    "message": "B站专栏发布成功（RPA模式）",
+                    "url": self._page.url,
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "未找到发布按钮，请手动发布",
+                }
 
         except Exception as e:
-            result["message"] = f"RPA发布异常: {e}"
-        finally:
-            self.close()
-
-        return result
+            self.take_screenshot("error")
+            return {"success": False, "message": f"B站RPA发布失败: {e}"}

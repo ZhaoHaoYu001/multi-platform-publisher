@@ -1,0 +1,31 @@
+# ============================================================
+# 知乎平台适配规则配置
+# ============================================================
+# 本文件定义了内容发布到知乎时的格式转换、标题限制、
+# 语气风格及媒体资源处理规则。
+
+platform: zhihu
+
+# ---- 标题规则 ----
+title:
+  max_length: 60                           # 标题最大字符数
+  strategy: truncate_with_ellipsis          # 超长截断策略：截断并加省略号
+  allow_question_ending: true               # 允许以问号结尾（适合知乎问答风格）
+
+# ---- 内容规则 ----
+# 知乎支持Markdown，需额外添加代码语言标注和盐选标记
+content:
+  output_format: markdown                   # 输出格式：Markdown（知乎原生支持）
+  transforms:                               # 内容转换流水线
+    - name: add_code_language_annotation    # 为代码块添加语言标注（提升高亮效果）
+    - name: add_salt_marks                  # 添加盐选内容标记
+
+# ---- 语气风格 ----
+tone:
+  style: professional                       # 专业风格
+  add_summary_label: true                   # 文末添加内容摘要标签
+
+# ---- 媒体资源规则 ----
+media:
+  image_max_size_mb: 10                     # 图片最大体积（MB）
+  video_max_resolution: 1080p               # 视频最大分辨率

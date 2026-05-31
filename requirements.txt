@@ -8,7 +8,7 @@ python-dotenv>=0.19.0
 # Web框架（用于API接口）
 flask>=2.2.0
 
-# RPA浏览器自动化
+# RPA浏览器自动化（可选）
 playwright>=1.40.0
 
 # 开发依赖

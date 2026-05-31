@@ -1,0 +1,47 @@
+# ============================================================
+# 微信公众号平台适配规则配置
+# ============================================================
+# 本文件定义了内容发布到微信公众号时的格式转换、标题限制、
+# 语气风格及媒体资源处理规则。
+
+platform: wechat
+
+# ---- 标题规则 ----
+title:
+  max_length: 64                           # 标题最大字符数
+  strategy: truncate_with_ellipsis          # 超长截断策略：截断并加省略号
+  forbidden_patterns:                       # 标题中禁止出现的特殊字符
+    - '[!@#$%^&*]'
+
+# ---- 内容规则 ----
+content:
+  output_format: richtext                   # 输出格式：富文本HTML
+  paragraph_style: wrap_in_p                # 段落包裹方式：使用<p>标签
+  image_display: centered                   # 图片居中显示
+  image_max_width: 900                      # 图片最大宽度（像素）
+
+
+  transforms:
+    - name: heading_to_html                   # 标题转HTML标签
+      mapping:
+        1: h1
+        2: h2
+        3: h3
+    - name: bold_to_strong                    # **粗体** → <strong>
+    - name: italic_to_em                      # *斜体* → <em>
+    - name: code_to_code_tag                  # 行内代码 → <code>
+    - name: blockquote_to_html                # 引用块 → <blockquote>
+    - name: wrap_paragraphs                   # 段落包裹<p>标签
+
+
+# ---- 语气风格 ----
+tone:
+  style: formal                             # 正式风格
+  add_original_declaration: true            # 末尾添加原创声明
+
+# ---- 媒体资源规则 ----
+media:
+  image_ratio: square                       # 封面图裁剪比例：正方形
+  image_min_size: 640                       # 图片最小尺寸（像素）
+  image_max_size_mb: 2                      # 图片最大体积（MB）
+  support_gif: true                         # 支持GIF动图

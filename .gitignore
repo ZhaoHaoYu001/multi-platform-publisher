@@ -56,3 +56,7 @@ htmlcov/
 # Media files (用户上传的媒体文件)
 uploads/
 temp/
+
+# RPA运行时文件
+cookies/
+screenshots/

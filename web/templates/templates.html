@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container single-col">
+    <div class="section">
+        <h2>内容模板</h2>
+        <p class="section-desc">选择模板快速创建文章，支持变量替换。</p>
+
+        <div class="template-grid" id="template-list"></div>
+    </div>
+
+    <div class="section" id="template-editor" style="display:none;">
+        <h2 id="template-title">编辑模板</h2>
+        <div id="template-vars"></div>
+        <div class="actions">
+            <button onclick="applyTemplate()" class="btn btn-primary">应用到编辑器</button>
+            <button onclick="closeTemplate()" class="btn btn-secondary">取消</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let templates = [];
+let currentTemplate = null;
+
+async function loadTemplates() {
+    const resp = await fetch('/api/templates');
+    const data = await resp.json();
+    templates = data.templates;
+    renderTemplates();
+}
+
+function renderTemplates() {
+    const grid = document.getElementById('template-list');
+    grid.innerHTML = '';
+    templates.forEach(t => {
+        const card = document.createElement('div');
+        card.className = 'template-card';
+        card.innerHTML = `
+            <h3>${t.name}</h3>
+            <p>${t.description}</p>
+            <div class="template-meta">${t.variables.length} 个变量</div>
+        `;
+        card.onclick = () => selectTemplate(t);
+        grid.appendChild(card);
+    });
+}
+
+function selectTemplate(tpl) {
+    currentTemplate = tpl;
+    document.getElementById('template-editor').style.display = 'block';
+    document.getElementById('template-title').textContent = `填写模板：${tpl.name}`;
+
+    const varsDiv = document.getElementById('template-vars');
+    varsDiv.innerHTML = '';
+    tpl.variables.forEach(v => {
+        const group = document.createElement('div');
+        group.className = 'form-group';
+        group.innerHTML = `
+            <label for="var-${v}">${v}</label>
+            <input type="text" id="var-${v}" placeholder="请输入 ${v}">
+        `;
+        varsDiv.appendChild(group);
+    });
+
+    document.getElementById('template-editor').scrollIntoView({behavior: 'smooth'});
+}
+
+async function applyTemplate() {
+    if (!currentTemplate) return;
+    const variables = {};
+    currentTemplate.variables.forEach(v => {
+        variables[v] = document.getElementById('var-' + v).value;
+    });
+
+    const resp = await fetch(`/api/templates/${currentTemplate.id}/apply`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({variables})
+    });
+    const data = await resp.json();
+    if (data.success) {
+        // 跳转到编辑页面并填充内容
+        localStorage.setItem('template_title', data.title);
+        localStorage.setItem('template_content', data.content);
+        window.location.href = '/';
+    }
+}
+
+function closeTemplate() {
+    document.getElementById('template-editor').style.display = 'none';
+    currentTemplate = null;
+}
+
+loadTemplates();
+</script>
+{% endblock %}

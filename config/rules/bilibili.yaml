@@ -1,0 +1,38 @@
+# ============================================================
+# B站（哔哩哔哩）平台适配规则配置
+# ============================================================
+# 本文件定义了内容发布到B站专栏时的格式转换、标题限制、
+# 语气风格及媒体资源处理规则。
+
+platform: bilibili
+
+# ---- 标题规则 ----
+title:
+  max_length: 80                           # 标题最大字符数
+  strategy: truncate_with_ellipsis          # 超长截断策略：截断并加省略号
+
+# ---- 内容规则 ----
+content:
+  output_format: richtext                   # 输出格式：B站富文本（BBCode风格）
+
+
+  transforms:
+    - name: heading_to_bold                   # 标题转加粗文本（B站不支持多级标题）
+    - name: strip_code_language               # 移除代码块语言标注（B站不支持）
+    - name: divider_to_dash                   # 分割线转为破折号
+    - name: markdown_to_bbcode                # Markdown转BBCode格式
+
+
+# ---- 语气风格 ----
+tone:
+  style: casual                             # 轻松随意风格（符合B站社区氛围）
+  add_emoji: true                           # 适当添加表情符号
+  add_interaction_prompt: true              # 末尾添加互动引导语（一键三连等）
+
+# ---- 媒体资源规则 ----
+media:
+  image_ratio: "16:9"                       # 封面图裁剪比例：16:9横屏
+  image_min_size: 800                       # 图片最小尺寸（像素）
+  image_max_size_mb: 5                      # 图片最大体积（MB）
+  video_max_resolution: "4K"                # 视频最大分辨率
+  video_max_fps: 60                         # 视频最大帧率

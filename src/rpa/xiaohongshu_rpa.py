@@ -1,170 +1,170 @@
-"""小红书RPA浏览器自动化模块."""
+"""小红书RPA自动化模块.
 
-import os
+使用Playwright实现小红书的浏览器自动化发布。
+"""
+
 import time
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from .base_rpa import BaseRPA
+from .base import RPABase
 
 
-class XiaohongshuRPA(BaseRPA):
-    """小红书RPA自动化发布.
+class XiaohongshuRPA(RPABase):
+    """小红书RPA自动化实现.
 
-    流程:
-    1. 登录（手动/Cookie自动）
-    2. 打开创作者发布页
-    3. 上传图片
-    4. 填写标题和正文
-    5. 发布
+    支持通过浏览器自动化登录小红书并发布笔记。
     """
 
-    PLATFORM = "xiaohongshu"
-    LOGIN_URL = "https://www.xiaohongshu.com"
-    HOME_URL = "www.xiaohongshu.com"
+    HOME_URL = "https://www.xiaohongshu.com"
+    PUBLISH_URL = "https://creator.xiaohongshu.com/publish/publish"
 
-    def _check_login_indicator(self, page) -> bool:
-        """检查小红书登录状态."""
+    def __init__(self, headless: bool = False, **kwargs) -> None:
+        """初始化小红书RPA.
+
+        Args:
+            headless: 是否无头模式
+            **kwargs: 其他参数
+        """
+        super().__init__(platform_name="xiaohongshu", headless=headless, **kwargs)
+
+    def login(self) -> bool:
+        """执行小红书登录.
+
+        打开小红书创作者中心，等待用户手动扫码或输入密码登录。
+
+        Returns:
+            登录是否成功
+        """
+        if not self._page:
+            if not self.launch_browser():
+                return False
+
         try:
-            page.wait_for_selector(
-                ".user-avatar, .header-avatar, [class*='avatar']",
-                timeout=3000,
-            )
-            return True
-        except Exception:
+            # 访问小红书创作者中心
+            self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
+            time.sleep(2)
+
+            # 检查是否已登录
+            cookies = self._context.cookies() if self._context else []
+            has_session = any(c["name"] == "web_session" for c in cookies)
+
+            if has_session:
+                print("[RPA-小红书] 已检测到登录状态")
+                return True
+
+            # 未登录，等待用户手动登录
+            print("[RPA-小红书] 请在浏览器中手动登录小红书...")
+            print("[RPA-小红书] 登录完成后请按回车继续...")
+
+            # 等待登录完成（最多5分钟）
+            for _ in range(300):
+                time.sleep(1)
+                cookies = self._context.cookies() if self._context else []
+                if any(c["name"] == "web_session" for c in cookies):
+                    print("[RPA-小红书] 登录成功！")
+                    self._save_cookies()
+                    return True
+
+            print("[RPA-小红书] 登录超时")
+            return False
+
+        except Exception as e:
+            print(f"[RPA-小红书] 登录失败: {e}")
             return False
 
     def publish(
         self,
         title: str,
         content: str,
-        images: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """发布小红书笔记.
+        images: list[str],
+        **kwargs,
+    ) -> dict:
+        """通过浏览器自动化发布小红书笔记.
 
         Args:
-            title: 笔记标题（最多20字）
-            content: 笔记正文（纯文本）
-            images: 图片路径列表（最多9张）
-            tags: 话题标签列表
+            title: 笔记标题
+            content: 笔记内容（纯文本格式）
+            images: 图片路径列表
+            **kwargs: 其他参数（topics）
 
         Returns:
             发布结果字典
         """
-        result: Dict[str, Any] = {
-            "success": False,
-            "message": "",
-        }
+        if not self._page:
+            if not self.launch_browser():
+                return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录
-            if not self.check_login():
-                if not self.login():
-                    result["message"] = "未登录或登录失败"
-                    return result
+            # 检查登录状态
+            if not self.login():
+                return {"success": False, "message": "未登录小红书"}
 
-            page = self._new_page()
-
-            # 打开创作者发布页面
-            print("[RPA] 正在打开小红书创作者发布页...")
-            page.goto(
-                "https://creator.xiaohongshu.com/publish/publish",
-                wait_until="domcontentloaded",
-            )
+            # 访问发布页面
+            print("[RPA-小红书] 正在打开发布页面...")
+            self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
             time.sleep(3)
 
-            # 检查登录状态
-            if "login" in page.url.lower():
-                self._context.close()
-                self._create_context()
-                page = self._new_page()
-                if not self.login():
-                    result["message"] = "重新登录失败"
-                    return result
-                page.goto(
-                    "https://creator.xiaohongshu.com/publish/publish",
-                    wait_until="domcontentloaded",
-                )
-                time.sleep(3)
-
-            # 确保在"上传图文"模式
-            try:
-                tab = page.locator('text="上传图文"').first
-                tab.click()
-                time.sleep(1)
-            except Exception:
-                pass
-
-            # 上传图片
+            # 上传图片（小红书必须先上传图片）
             if images:
-                print(f"[RPA] 正在上传 {len(images)} 张图片...")
-                for img_path in images[:9]:  # 小红书最多9张
-                    if os.path.exists(img_path):
+                print(f"[RPA-小红书] 上传 {len(images)} 张图片...")
+                file_input = self._page.locator('input[type="file"]')
+                if file_input.count() > 0:
+                    for img_path in images:
                         try:
-                            upload_input = page.locator(
-                                'input[type="file"][accept*="image"]'
-                            ).first
-                            upload_input.set_input_files(img_path)
-                            time.sleep(3)  # 等待上传完成
+                            file_input.first.set_input_files(img_path)
+                            time.sleep(3)
                         except Exception as e:
-                            print(f"[RPA] 图片上传失败: {e}")
+                            print(f"[RPA-小红书] 图片上传失败: {e}")
+                time.sleep(2)
 
             # 填写标题
-            print("[RPA] 正在填写标题...")
-            try:
-                title_input = page.locator(
-                    'input[placeholder*="标题"], '
-                    '[contenteditable="true"][data-placeholder*="标题"], '
-                    ".title-input input"
-                ).first
-                title_input.click()
-                title_input.fill("")
-                title_input.type(title[:20], delay=50)
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"[RPA] 填写标题失败: {e}")
+            print(f"[RPA-小红书] 填写标题: {title[:20]}...")
+            title_input = self._page.locator(
+                'input[placeholder*="标题"], #title, .title-input, [class*="title"]'
+            )
+            if title_input.count() > 0:
+                title_input.first.fill(title[:20])
+            time.sleep(1)
 
-            # 填写正文
-            print("[RPA] 正在填写正文...")
-            try:
-                content_input = page.locator(
-                    '[contenteditable="true"][data-placeholder*="描述"], '
-                    ".desc-input [contenteditable], "
-                    'textarea[placeholder*="描述"]'
-                ).first
-                content_input.click()
-                content_input.fill("")
-                # 组装正文+标签
-                full_content = content
-                if tags:
-                    tag_str = " ".join(f"#{t}#" for t in tags[:3])
-                    full_content = f"{content}\n\n{tag_str}"
-                content_input.type(full_content[:1000], delay=20)
-                time.sleep(0.5)
-            except Exception as e:
-                print(f"[RPA] 填写正文失败: {e}")
+            # 填写内容
+            print("[RPA-小红书] 填写内容...")
+            content_editor = self._page.locator(
+                'textarea[placeholder*="内容"], #content, .content-input, '
+                '[contenteditable="true"], [class*="content"]'
+            )
+            if content_editor.count() > 0:
+                content_editor.first.click()
+                for line in content.split('\n'):
+                    if line.strip():
+                        self._page.keyboard.type(line)
+                    self._page.keyboard.press("Enter")
+            time.sleep(2)
 
-            # 发布
-            print("[RPA] 正在发布...")
-            try:
-                publish_btn = page.locator(
-                    'button:has-text("发布"), '
-                    ".publish-btn, "
-                    'button:has-text("发表笔记")'
-                ).first
-                publish_btn.click()
-                time.sleep(3)
+            # 截图
+            self.take_screenshot("before_publish")
 
-                result["success"] = True
-                result["message"] = "小红书笔记已发布（RPA）"
-            except Exception as e:
-                result["message"] = f"发布失败: {e}"
+            # 点击发布
+            print("[RPA-小红书] 正在发布...")
+            publish_btn = self._page.locator(
+                'button:has-text("发布"), button:has-text("发表"), .publishBtn'
+            )
+            if publish_btn.count() > 0:
+                publish_btn.first.click()
+                time.sleep(5)
 
-            self._save_cookies()
+                self.take_screenshot("after_publish")
+
+                return {
+                    "success": True,
+                    "message": "小红书笔记发布成功（RPA模式）",
+                    "url": self._page.url,
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "未找到发布按钮，请手动发布",
+                }
 
         except Exception as e:
-            result["message"] = f"RPA发布异常: {e}"
-        finally:
-            self.close()
-
-        return result
+            self.take_screenshot("error")
+            return {"success": False, "message": f"小红书RPA发布失败: {e}"}
