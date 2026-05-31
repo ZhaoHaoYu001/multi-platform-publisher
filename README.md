@@ -5,7 +5,7 @@
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Tests](https://img.shields.io/badge/tests-180%2B-brightgreen.svg)](tests/)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/ZhaoHaoYu001/multi-platform-publisher/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/ZhaoHaoYu001/multi-platform-publisher/releases)
 
 一个功能完整的多平台内容发布Python工具，支持微信公众号、知乎、B站、小红书等平台的一键发布。
 
@@ -18,6 +18,7 @@
 - 👁️ **发布预览** - 发布前预览各平台的最终效果
 - 🔌 **可扩展架构** - 轻松添加新平台支持
 - 💻 **双重界面** - 交互式程序 + 命令行工具
+- 🤖 **RPA浏览器自动化** - 无API凭证时自动降级到Playwright浏览器自动化发布
 
 ## 📊 支持平台
 
@@ -281,6 +282,11 @@ multi-platform-publisher/
 │   ├── draft/                # 草稿管理
 │   │   └── draft_manager.py  # 草稿管理器
 │   └── review/               # 预览系统
+│   └── rpa/                  # RPA浏览器自动化
+│       ├── base.py           # RPA基类
+│       ├── bilibili_rpa.py   # B站RPA
+│       ├── zhihu_rpa.py      # 知乎RPA
+│       └── xiaohongshu_rpa.py # 小红书RPA
 │       └── previewer.py      # 预览生成器
 ├── tests/                    # 测试文件
 ├── examples/                 # 示例文件
