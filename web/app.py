@@ -20,6 +20,8 @@ from src.adapters.wechat_adapter import WechatAdapter
 from src.adapters.zhihu_adapter import ZhihuAdapter
 from src.adapters.bilibili_adapter import BilibiliAdapter
 from src.adapters.xiaohongshu_adapter import XiaohongshuAdapter
+from src.adapters.douyin_adapter import DouyinAdapter
+from src.adapters.weibo_adapter import WeiboAdapter
 from src.core.content_parser import ContentParser
 from src.core.credential_store import CredentialStore
 from src.core.platform_base import PublishMode
@@ -66,6 +68,8 @@ def _init_registry() -> AdapterRegistry:
     registry.register("zhihu", ZhihuAdapter)
     registry.register("bilibili", BilibiliAdapter)
     registry.register("xiaohongshu", XiaohongshuAdapter)
+    registry.register("douyin", DouyinAdapter)
+    registry.register("weibo", WeiboAdapter)
     return registry
 
 
