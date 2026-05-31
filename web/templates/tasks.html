@@ -2,9 +2,29 @@
 
 {% block content %}
 <div class="container single-col">
+    <!-- 定时任务 -->
     <div class="section">
         <div class="section-header">
-            <h2>任务队列</h2>
+            <h2>⏰ 定时任务</h2>
+            <div class="section-actions">
+                <button onclick="loadScheduledTasks()" class="btn btn-secondary btn-sm">刷新</button>
+            </div>
+        </div>
+        <div id="scheduled-task-list"></div>
+    </div>
+
+    <!-- 调度器状态 -->
+    <div class="section">
+        <div class="section-header">
+            <h2>调度器状态</h2>
+        </div>
+        <div id="scheduler-status"></div>
+    </div>
+
+    <!-- 执行历史 -->
+    <div class="section">
+        <div class="section-header">
+            <h2>执行历史</h2>
             <div class="section-actions">
                 <select id="status-filter" onchange="loadTasks()">
                     <option value="">全部</option>
@@ -17,7 +37,6 @@
                 <button onclick="loadTasks()" class="btn btn-secondary btn-sm">刷新</button>
             </div>
         </div>
-
         <div id="task-list"></div>
     </div>
 </div>
@@ -25,6 +44,81 @@
 
 {% block scripts %}
 <script>
+// ── 定时任务 ──
+async function loadScheduledTasks() {
+    const resp = await fetch('/api/schedule');
+    const data = await resp.json();
+
+    const list = document.getElementById('scheduled-task-list');
+    if (!data.tasks || data.tasks.length === 0) {
+        list.innerHTML = '<p class="empty">暂无定时任务，在"编辑"页面创建定时发布</p>';
+        return;
+    }
+
+    list.innerHTML = '';
+    data.tasks.forEach(t => {
+        const scheduledTime = t.scheduled_at ? new Date(t.scheduled_at).toLocaleString('zh-CN') : '未知';
+        const div = document.createElement('div');
+        div.className = 'task-item task-scheduled';
+        div.innerHTML = `
+            <div class="task-main">
+                <span class="task-status">⏰ 已排程</span>
+                <span class="task-platform"><strong>${t.platform}</strong></span>
+                <span class="task-title">${t.title || '无标题'}</span>
+                <button onclick="cancelScheduled('${t.id}')" class="btn btn-sm" style="margin-left:auto;background:#e74c3c;color:#fff;">取消</button>
+            </div>
+            <div class="task-meta">
+                <small>⏱ 计划时间: ${scheduledTime}</small>
+                <small>创建: ${t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : ''}</small>
+            </div>
+        `;
+        list.appendChild(div);
+    });
+}
+
+async function cancelScheduled(taskId) {
+    if (!confirm('确定取消此定时任务？')) return;
+    const resp = await fetch('/api/schedule/' + taskId, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.success) {
+        loadScheduledTasks();
+    } else {
+        alert('取消失败');
+    }
+}
+
+// ── 调度器状态 ──
+async function loadSchedulerStatus() {
+    const resp = await fetch('/api/scheduler/status');
+    const data = await resp.json();
+
+    const div = document.getElementById('scheduler-status');
+    if (!data.success || !data.status) {
+        div.innerHTML = '<p class="empty">无法获取调度器状态</p>';
+        return;
+    }
+
+    const s = data.status;
+    const runningIcon = s.running ? '🟢 运行中' : '🔴 已停止';
+    const nextInfo = s.next_task
+        ? `下一个任务: <strong>${s.next_task.platform}</strong> - ${s.next_task.title} (${new Date(s.next_task.scheduled_at).toLocaleString('zh-CN')})`
+        : '没有待执行的定时任务';
+
+    div.innerHTML = `
+        <div class="scheduler-status-card">
+            <div class="scheduler-row">
+                <span>状态: <strong>${runningIcon}</strong></span>
+                <span>检查间隔: ${s.check_interval}秒</span>
+                <span>待执行: ${s.scheduled_count}个</span>
+            </div>
+            <div class="scheduler-next">
+                <small>${nextInfo}</small>
+            </div>
+        </div>
+    `;
+}
+
+// ── 执行历史 ──
 async function loadTasks() {
     const filter = document.getElementById('status-filter').value;
     const url = filter ? `/api/tasks?status=${filter}` : '/api/tasks';
@@ -33,7 +127,7 @@ async function loadTasks() {
 
     const list = document.getElementById('task-list');
     if (data.tasks.length === 0) {
-        list.innerHTML = '<p class="empty">暂无任务</p>';
+        list.innerHTML = '<p class="empty">暂无执行记录</p>';
         return;
     }
 
@@ -44,6 +138,7 @@ async function loadTasks() {
             'publishing': '🔄 发布中',
             'success': '✅ 成功',
             'failed': '❌ 失败',
+            'scheduled': '⏰ 已排程',
         };
         const div = document.createElement('div');
         div.className = `task-item task-${t.status}`;
@@ -54,7 +149,8 @@ async function loadTasks() {
                 <span class="task-title">${t.title || '无标题'}</span>
             </div>
             <div class="task-meta">
-                <small>${t.created_at || ''}</small>
+                <small>${t.created_at ? new Date(t.created_at).toLocaleString('zh-CN') : ''}</small>
+                ${t.updated_at ? `<small>更新: ${new Date(t.updated_at).toLocaleString('zh-CN')}</small>` : ''}
                 ${t.error ? `<small class="task-error">错误: ${t.error}</small>` : ''}
             </div>
         `;
@@ -68,8 +164,10 @@ async function clearAllTasks() {
     loadTasks();
 }
 
-// 自动刷新
+// 自动刷新（每10秒）
+loadScheduledTasks();
+loadSchedulerStatus();
 loadTasks();
-setInterval(loadTasks, 5000);
+setInterval(() => { loadScheduledTasks(); loadSchedulerStatus(); loadTasks(); }, 10000);
 </script>
 {% endblock %}
