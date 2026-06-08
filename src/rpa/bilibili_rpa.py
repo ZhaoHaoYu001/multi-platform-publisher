@@ -19,26 +19,12 @@ class BilibiliRPA(RPABase):
     ARTICLE_URL = "https://member.bilibili.com/platform/upload/text/edit"
 
     def __init__(self, headless: bool = False, **kwargs) -> None:
-        """初始化B站RPA.
-
-        Args:
-            headless: 是否无头模式
-            **kwargs: 其他参数
-        """
         super().__init__(platform_name="bilibili", headless=headless, **kwargs)
 
     def login(self, interactive: bool = True) -> bool:
-        """执行B站登录.
-
-        打开B站首页，等待用户手动扫码或输入密码登录。
-
-        Returns:
-            登录是否成功
-        """
         if not self._page:
             if not self.launch_browser():
                 return False
-
         try:
             return self.ensure_logged_in(
                 url=self.HOME_URL,
@@ -50,101 +36,87 @@ class BilibiliRPA(RPABase):
             print(f"[RPA-B站] 登录失败: {e}")
             return False
 
-    def publish(
-        self,
-        title: str,
-        content: str,
-        images: list[str],
-        **kwargs,
-    ) -> dict:
-        """通过浏览器自动化发布B站专栏.
-
-        Args:
-            title: 文章标题
-            content: 文章内容（Markdown格式）
-            images: 图片路径列表
-            **kwargs: 其他参数（category, tags, summary）
-
-        Returns:
-            发布结果字典
-        """
+    def publish(self, title: str, content: str, images: list[str], **kwargs) -> dict:
         if not self._page:
             if not self.launch_browser():
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
             allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
             if not self.login(interactive=allow_login_prompt):
                 return {"success": False, "message": self.login_required_message("B站")}
 
-            # 访问专栏编辑页面
             print("[RPA-B站] 正在打开专栏编辑页面...")
             self._page.goto(self.ARTICLE_URL, wait_until="domcontentloaded")
-            time.sleep(3)
+            self._page.wait_for_load_state("networkidle")
+            time.sleep(2)
+
+            # 上传封面图片
+            if images:
+                print(f"[RPA-B站] 上传封面图片...")
+                self._upload_files(
+                    self._page,
+                    ['input[type="file"]', '.upload-input', '.cover-upload input'],
+                    [images[0]],
+                    label="封面上传",
+                )
+                time.sleep(3)
 
             # 填写标题
             print(f"[RPA-B站] 填写标题: {title[:30]}...")
-            title_input = self._page.locator('input[placeholder*="标题"], .title-input, #title')
-            if title_input.count() > 0:
-                title_input.first.fill(title)
-            else:
-                # 尝试其他选择器
+            if not self._fill_input(
+                self._page,
+                ['input[placeholder*="标题"]', '.title-input input', '#title', 'input.title', '.title input'],
+                title,
+                label="标题",
+            ):
+                # 终极回退: 聚焦并键盘输入
+                self._page.keyboard.press("Tab")
                 self._page.keyboard.type(title)
 
             time.sleep(1)
 
-            # 填写内容
+            # 填写内容 - B站用的是 Quill 富文本编辑器
             print("[RPA-B站] 填写内容...")
-            content_editor = self._page.locator(
-                '.ql-editor, .editor-content, [contenteditable="true"]'
+            html_content = content.replace("\n", "<br>").replace("\n\n", "<br><br>")
+            self._fill_rich_editor(
+                self._page,
+                ['.ql-editor', '[contenteditable="true"]', '.editor-content', '.article-content'],
+                html_content,
+                label="内容编辑器",
             )
-            if content_editor.count() > 0:
-                content_editor.first.click()
-                # 将内容逐行输入
-                for line in content.split('\n'):
-                    if line.strip():
-                        self._page.keyboard.type(line)
-                    self._page.keyboard.press("Enter")
             time.sleep(2)
 
-            # 上传图片（如果有）
-            if images:
-                print(f"[RPA-B站] 上传 {len(images)} 张图片...")
-                file_input = self._page.locator('input[type="file"]')
-                if file_input.count() > 0:
-                    for img_path in images:
-                        try:
-                            file_input.first.set_input_files(img_path)
-                            time.sleep(2)
-                        except Exception as e:
-                            print(f"[RPA-B站] 图片上传失败: {e}")
+            # 上传文中图片（如果有更多图片）
+            if len(images) > 1:
+                self._upload_files(
+                    self._page,
+                    ['input[type="file"]'],
+                    images[1:],
+                    label="文中图片",
+                )
+                time.sleep(3)
 
-            # 截图保存
             self.take_screenshot("before_publish")
 
-            # 点击发布按钮
+            # 点击发布
             print("[RPA-B站] 正在发布...")
-            publish_btn = self._page.locator(
-                'button:has-text("发布"), button:has-text("提交"), .submit-btn'
+            clicked = self._click_button(
+                self._page,
+                ['button:has-text("发布")', 'button:has-text("提交")', '.submit-btn', '.publish-btn'],
+                label="发布按钮",
             )
-            if publish_btn.count() > 0:
-                publish_btn.first.click()
+            if clicked:
                 time.sleep(5)
-
-                # 截图保存结果
                 self.take_screenshot("after_publish")
-
                 return {
                     "success": True,
                     "message": "B站专栏发布成功（RPA模式）",
                     "url": self._page.url,
                 }
             else:
-                return {
-                    "success": False,
-                    "message": "未找到发布按钮，请手动发布",
-                }
+                self.take_screenshot("publish_button_not_found")
+                return {"success": False, "message": "未找到发布按钮，请手动发布"}
 
         except Exception as e:
             self.take_screenshot("error")

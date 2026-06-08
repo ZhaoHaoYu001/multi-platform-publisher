@@ -4,6 +4,7 @@
 """
 
 import os
+import time
 from typing import Any, Dict, List, Optional
 
 from .base import RPABase
@@ -16,11 +17,7 @@ class DouyinRPA(RPABase):
         rpa = DouyinRPA()
         with rpa:
             rpa.login()
-            result = rpa.publish(
-                title="标题",
-                content="内容",
-                images=["image1.jpg"],
-            )
+            result = rpa.publish(title="标题", content="内容", images=["image1.jpg"])
     """
 
     PLATFORM = "douyin"
@@ -28,16 +25,8 @@ class DouyinRPA(RPABase):
     PUBLISH_URL = "https://creator.douyin.com/creator-micro/content/upload"
 
     def login(self, interactive: bool = True) -> bool:
-        """登录抖音创作者平台.
-
-        打开登录页面，等待用户手动扫码登录。
-
-        Returns:
-            是否登录成功
-        """
         if not self._page and not self.launch_browser():
             return False
-
         try:
             return self.ensure_logged_in(
                 url=self.LOGIN_URL,
@@ -47,26 +36,11 @@ class DouyinRPA(RPABase):
                 allow_interactive=interactive,
             )
         except Exception as e:
-            print(f"登录失败: {e}")
+            print(f"[RPA-抖音] 登录失败: {e}")
             return False
 
-    def publish(
-        self,
-        title: str,
-        content: str,
-        images: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """发布图文笔记.
-
-        Args:
-            title: 笔记标题
-            content: 笔记内容
-            images: 图片路径列表
-
-        Returns:
-            发布结果
-        """
-        if not self._context and not self.launch_browser():
+    def publish(self, title: str, content: str, images: Optional[List[str]] = None, **kwargs) -> Dict[str, Any]:
+        if not self._page and not self.launch_browser():
             return {"success": False, "message": "启动浏览器失败"}
 
         try:
@@ -74,45 +48,89 @@ class DouyinRPA(RPABase):
             if not self.login(interactive=allow_login_prompt):
                 return {"success": False, "message": self.login_required_message("抖音")}
 
-            page = self._context.new_page()
-            page.goto(self.PUBLISH_URL)
+            print("[RPA-抖音] 正在打开图文发布页面...")
+            self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
+            self._page.wait_for_load_state("networkidle")
+            time.sleep(2)
 
-            # 等待页面加载
-            page.wait_for_load_state("networkidle")
-
-            # 上传图片
+            # 上传图片（抖音图文需要先传图）
             if images:
-                file_input = page.locator('input[type="file"]')
-                for img_path in images:
-                    if os.path.exists(img_path):
-                        file_input.set_input_files(img_path)
-                        page.wait_for_timeout(2000)
+                print(f"[RPA-抖音] 上传 {len(images)} 张图片...")
+                valid_images = [p for p in images if os.path.exists(p)]
+                if valid_images:
+                    self._upload_files(
+                        self._page,
+                        [
+                            'input[type="file"]',
+                            '.upload-input',
+                            '[class*="upload"] input',
+                        ],
+                        valid_images,
+                        label="图片上传",
+                    )
+                    time.sleep(4)
 
             # 填写标题
-            title_input = page.locator('[data-testid="title-input"], .title-input, input[placeholder*="标题"]')
-            if title_input.count() > 0:
-                title_input.first.fill(title[:30])
+            print(f"[RPA-抖音] 填写标题: {title[:30]}...")
+            if not self._fill_input(
+                self._page,
+                [
+                    '[data-testid="title-input"]',
+                    '.title-input input',
+                    'input[placeholder*="标题"]',
+                    '.title input',
+                    'input[class*="title"]',
+                ],
+                title[:30],
+                label="标题",
+            ):
+                self._page.keyboard.press("Tab")
+                self._page.keyboard.type(title[:30])
+
+            time.sleep(1)
 
             # 填写内容
-            content_input = page.locator('[data-testid="content-input"], .content-input, textarea, [contenteditable="true"]')
-            if content_input.count() > 0:
-                content_input.first.fill(content[:1000])
+            print("[RPA-抖音] 填写内容...")
+            self._fill_rich_editor(
+                self._page,
+                [
+                    '[data-testid="content-input"]',
+                    '[contenteditable="true"]',
+                    '.content-input textarea',
+                    '[placeholder*="内容"]',
+                    'textarea',
+                ],
+                content[:1000],
+                label="内容编辑器",
+            )
+            time.sleep(2)
 
-            # 截图保存
-            self._take_screenshot(page, "douyin_before_publish")
+            self.take_screenshot("before_publish")
 
-            # 点击发布按钮
-            publish_btn = page.locator('button:has-text("发布"), [data-testid="publish-btn"]')
-            if publish_btn.count() > 0:
-                publish_btn.first.click()
-                page.wait_for_timeout(3000)
+            # 点击发布
+            print("[RPA-抖音] 正在发布...")
+            clicked = self._click_button(
+                self._page,
+                [
+                    'button:has-text("发布")',
+                    '[data-testid="publish-btn"]',
+                    '.publish-btn',
+                    '.submit-btn',
+                ],
+                label="发布按钮",
+            )
+            if clicked:
+                time.sleep(5)
+                self.take_screenshot("after_publish")
+                return {
+                    "success": True,
+                    "message": "抖音图文发布成功（RPA模式）",
+                    "url": self._page.url,
+                }
+            else:
+                self.take_screenshot("publish_button_not_found")
+                return {"success": False, "message": "未找到发布按钮，请手动发布"}
 
-            self._take_screenshot(page, "douyin_after_publish")
-            page.close()
-
-            return {"success": True, "message": "发布成功"}
         except Exception as e:
-            return {"success": False, "message": f"发布失败: {e}"}
-
-
-from typing import Optional
+            self.take_screenshot("error")
+            return {"success": False, "message": f"抖音RPA发布失败: {e}"}

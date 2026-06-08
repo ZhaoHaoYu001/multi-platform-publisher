@@ -10,14 +10,16 @@ class XiaohongshuAdapter(PlatformAdapter):
     def deliver(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:
         cookie = self._credentials.get("cookie", "")
         if cookie:
-            return self._deliver_via_api(adapted, images, **kwargs)
+            result = self._deliver_via_api(adapted, images, **kwargs)
+            if result.success:
+                return result
         return self._deliver_via_rpa(adapted, images, **kwargs)
 
     def _deliver_via_api(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:
         from ..api.xiaohongshu_api import XiaohongshuAPI
         api = XiaohongshuAPI(cookie=self._credentials.get("cookie", ""))
         try:
-            result = api.create_and_publish(title=adapted.title, content=adapted.content, images=images)
+            result = api.create_and_publish(title=adapted.title, content=adapted.content, image_urls=images)
             return PublishResult(success=True, platform=self.platform_name, message="API发布成功", url=result.get("url"))
         except Exception as e:
             return PublishResult(success=False, platform=self.platform_name, message=f"API发布失败: {e}")

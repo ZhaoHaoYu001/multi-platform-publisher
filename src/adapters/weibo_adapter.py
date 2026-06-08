@@ -18,7 +18,9 @@ class WeiboAdapter(PlatformAdapter):
         """投递到微博."""
         cookie = self._credentials.get("cookie", "")
         if cookie:
-            return self._deliver_via_api(adapted, images, **kwargs)
+            result = self._deliver_via_api(adapted, images, **kwargs)
+            if result.success:
+                return result
         return self._deliver_via_rpa(adapted, images, **kwargs)
 
     def _deliver_via_api(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:

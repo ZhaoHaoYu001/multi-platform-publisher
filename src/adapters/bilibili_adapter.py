@@ -10,14 +10,16 @@ class BilibiliAdapter(PlatformAdapter):
     def deliver(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:
         sess_data = self._credentials.get("sess_data", "")
         if sess_data:
-            return self._deliver_via_api(adapted, images, **kwargs)
+            result = self._deliver_via_api(adapted, images, **kwargs)
+            if result.success:
+                return result
         return self._deliver_via_rpa(adapted, images, **kwargs)
 
     def _deliver_via_api(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:
         from ..api.bilibili_api import BilibiliAPI
         api = BilibiliAPI(sess_data=self._credentials.get("sess_data", ""), csrf=self._credentials.get("csrf", ""))
         try:
-            result = api.publish_article(title=adapted.title, content=adapted.content, images=images)
+            result = api.publish_article(title=adapted.title, content=adapted.content, cover_image_path=images[0] if images else None)
             return PublishResult(success=True, platform=self.platform_name, message="API发布成功", url=result.get("url"))
         except Exception as e:
             return PublishResult(success=False, platform=self.platform_name, message=f"API发布失败: {e}")
