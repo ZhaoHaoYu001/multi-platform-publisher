@@ -330,6 +330,128 @@ class RPABase(ABC):
         except Exception:
             return ""
 
+    # ── 页面交互工具方法 ───────────────────────────────────────────
+
+    def _active_page(self, fallback_page=None):
+        """获取当前活动页面."""
+        if fallback_page:
+            return fallback_page
+        if self._page:
+            return self._page
+        if self._context and self._context.pages:
+            return self._context.pages[-1]
+        return None
+
+    def _wait_for_any(self, page, selectors: list, timeout: int = 15000, label: str = "元素"):
+        """等待任一选择器出现，返回第一个匹配的 Locator 或 None."""
+        import time as _time
+        deadline = _time.time() + timeout / 1000
+        while _time.time() < deadline:
+            for sel in selectors:
+                try:
+                    loc = page.locator(sel)
+                    if loc.count() > 0:
+                        print(f"[RPA-{self.platform_name}] 找到 {label}: {sel}")
+                        return loc.first
+                except Exception:
+                    continue
+            _time.sleep(0.5)
+        print(f"[RPA-{self.platform_name}] 未找到 {label}，尝试过的选择器: {selectors}")
+        return None
+
+    def _fill_input(self, page, selectors: list, text: str, timeout: int = 15000, label: str = "输入框"):
+        """等待输入框出现并填入文本."""
+        loc = self._wait_for_any(page, selectors, timeout, label)
+        if loc is None:
+            return False
+        try:
+            loc.click()
+            loc.fill("")
+            loc.fill(text)
+            print(f"[RPA-{self.platform_name}] {label}已填写 ({len(text)} 字符)")
+            return True
+        except Exception as e:
+            print(f"[RPA-{self.platform_name}] {label}填写失败: {e}")
+            return False
+
+    def _fill_rich_editor(self, page, selectors: list, content: str, timeout: int = 15000, label: str = "编辑器"):
+        """向 contenteditable / 富文本编辑器填入内容."""
+        loc = self._wait_for_any(page, selectors, timeout, label)
+        if loc is None:
+            return False
+        try:
+            loc.click()
+            page.wait_for_timeout(500)
+            # 尝试使用 evaluate 设置内容（适用于 contenteditable/slate/react 编辑器）
+            try:
+                page.evaluate(
+                    """([el, text]) => {
+                        el.focus();
+                        if (el.getAttribute('contenteditable') !== null || el.isContentEditable) {
+                            el.innerHTML = text;
+                            el.dispatchEvent(new Event('input', {bubbles: true}));
+                        } else {
+                            el.value = text;
+                            el.dispatchEvent(new Event('input', {bubbles: true}));
+                            el.dispatchEvent(new Event('change', {bubbles: true}));
+                        }
+                    }""",
+                    [loc.element_handle(), content],
+                )
+                print(f"[RPA-{self.platform_name}] {label}已通过JS填充 ({len(content)} 字符)")
+                return True
+            except Exception:
+                pass
+            # 回退: 逐行键盘输入
+            print(f"[RPA-{self.platform_name}] JS填充失败，回退键盘输入...")
+            lines = content.split("\n")
+            for i, line in enumerate(lines):
+                if line.strip():
+                    page.keyboard.type(line)
+                if i < len(lines) - 1:
+                    page.keyboard.press("Enter")
+            return True
+        except Exception as e:
+            print(f"[RPA-{self.platform_name}] {label}填写失败: {e}")
+            return False
+
+    def _click_button(self, page, selectors: list, timeout: int = 10000, label: str = "按钮"):
+        """等待按钮出现并点击."""
+        loc = self._wait_for_any(page, selectors, timeout, label)
+        if loc is None:
+            return False
+        try:
+            loc.click()
+            print(f"[RPA-{self.platform_name}] 已点击 {label}")
+            return True
+        except Exception as e:
+            print(f"[RPA-{self.platform_name}] {label}点击失败: {e}")
+            # 尝试 JS 点击
+            try:
+                loc.evaluate("el => el.click()")
+                print(f"[RPA-{self.platform_name}] 已通过JS点击 {label}")
+                return True
+            except Exception:
+                return False
+
+    def _upload_files(self, page, selectors: list, file_paths: list, timeout: int = 10000, label: str = "文件上传"):
+        """通过文件输入上传文件."""
+        import os as _os
+        loc = self._wait_for_any(page, selectors, timeout, label)
+        if loc is None:
+            return False
+        valid = [p for p in file_paths if _os.path.exists(p)]
+        if not valid:
+            print(f"[RPA-{self.platform_name}] 没有有效的文件路径")
+            return False
+        try:
+            loc.set_input_files(valid)
+            print(f"[RPA-{self.platform_name}] 已上传 {len(valid)} 个文件")
+            return True
+        except Exception as e:
+            print(f"[RPA-{self.platform_name}] {label}失败: {e}")
+            return False
+
     @abstractmethod
     def login(self, interactive: bool = True) -> bool:
         """执行登录操作.

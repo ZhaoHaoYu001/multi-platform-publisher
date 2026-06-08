@@ -19,26 +19,12 @@ class ZhihuRPA(RPABase):
     PUBLISH_URL = "https://zhuanlan.zhihu.com/write"
 
     def __init__(self, headless: bool = False, **kwargs) -> None:
-        """初始化知乎RPA.
-
-        Args:
-            headless: 是否无头模式
-            **kwargs: 其他参数
-        """
         super().__init__(platform_name="zhihu", headless=headless, **kwargs)
 
     def login(self, interactive: bool = True) -> bool:
-        """执行知乎登录.
-
-        打开知乎首页，等待用户手动扫码或输入密码登录。
-
-        Returns:
-            登录是否成功
-        """
         if not self._page:
             if not self.launch_browser():
                 return False
-
         try:
             return self.ensure_logged_in(
                 url=self.HOME_URL,
@@ -50,108 +36,99 @@ class ZhihuRPA(RPABase):
             print(f"[RPA-知乎] 登录失败: {e}")
             return False
 
-    def publish(
-        self,
-        title: str,
-        content: str,
-        images: list[str],
-        **kwargs,
-    ) -> dict:
-        """通过浏览器自动化发布知乎文章.
-
-        Args:
-            title: 文章标题
-            content: 文章内容（Markdown格式）
-            images: 图片路径列表
-            **kwargs: 其他参数
-
-        Returns:
-            发布结果字典
-        """
+    def publish(self, title: str, content: str, images: list[str], **kwargs) -> dict:
         if not self._page:
             if not self.launch_browser():
                 return {"success": False, "message": "启动浏览器失败"}
 
         try:
-            # 检查登录状态。真实发布默认只复用预登录态，避免演示时卡在扫码/验证码。
             allow_login_prompt = kwargs.get("allow_login_prompt", self.auto_login)
             if not self.login(interactive=allow_login_prompt):
                 return {"success": False, "message": self.login_required_message("知乎")}
 
-            # 访问写文章页面
             print("[RPA-知乎] 正在打开写文章页面...")
             self._page.goto(self.PUBLISH_URL, wait_until="domcontentloaded")
-            time.sleep(3)
+            self._page.wait_for_load_state("networkidle")
+            time.sleep(2)
 
             # 填写标题
             print(f"[RPA-知乎] 填写标题: {title[:30]}...")
-            title_input = self._page.locator(
-                'textarea[placeholder*="标题"], .WriteIndex-titleInput, #title'
-            )
-            if title_input.count() > 0:
-                title_input.first.fill(title)
-            else:
+            if not self._fill_input(
+                self._page,
+                [
+                    'textarea[placeholder*="标题"]',
+                    '.WriteIndex-titleInput textarea',
+                    '.public-DraftStyleDefault-block',
+                    '[data-testid="article-title"]',
+                    '.title-editor textarea',
+                ],
+                title,
+                label="标题",
+            ):
+                self._page.keyboard.press("Tab")
                 self._page.keyboard.type(title)
 
             time.sleep(1)
 
-            # 填写内容
+            # 填写内容 - 知乎用 Draft.js / Slate 编辑器
             print("[RPA-知乎] 填写内容...")
-            content_editor = self._page.locator(
-                '.public-DraftEditor-content, .WriteIndex-content, [contenteditable="true"]'
+            self._fill_rich_editor(
+                self._page,
+                [
+                    '.public-DraftEditor-content',
+                    '[contenteditable="true"]',
+                    '.WriteIndex-content [contenteditable]',
+                    '.rich-editor [contenteditable]',
+                ],
+                content,
+                label="内容编辑器",
             )
-            if content_editor.count() > 0:
-                content_editor.first.click()
-                for line in content.split('\n'):
-                    if line.strip():
-                        self._page.keyboard.type(line)
-                    self._page.keyboard.press("Enter")
             time.sleep(2)
 
             # 上传图片
             if images:
                 print(f"[RPA-知乎] 上传 {len(images)} 张图片...")
-                file_input = self._page.locator('input[type="file"]')
-                if file_input.count() > 0:
-                    for img_path in images:
-                        try:
-                            file_input.first.set_input_files(img_path)
-                            time.sleep(2)
-                        except Exception as e:
-                            print(f"[RPA-知乎] 图片上传失败: {e}")
+                self._upload_files(
+                    self._page,
+                    ['input[type="file"]'],
+                    images,
+                    label="图片上传",
+                )
+                time.sleep(3)
 
-            # 截图
             self.take_screenshot("before_publish")
 
             # 点击发布
             print("[RPA-知乎] 正在发布...")
-            publish_btn = self._page.locator(
-                'button:has-text("发布"), button:has-text("发表"), .PublishPanel-triggerButton'
+            clicked = self._click_button(
+                self._page,
+                [
+                    'button:has-text("发布")',
+                    'button:has-text("发表")',
+                    '.PublishPanel-triggerButton',
+                    '[data-testid="publish-button"]',
+                ],
+                label="发布按钮",
             )
-            if publish_btn.count() > 0:
-                publish_btn.first.click()
-                time.sleep(3)
-
-                # 确认发布
-                confirm_btn = self._page.locator(
-                    'button:has-text("确认发布"), button:has-text("确定")'
+            if clicked:
+                time.sleep(2)
+                # 确认发布（知乎通常有两步确认）
+                confirm_clicked = self._click_button(
+                    self._page,
+                    ['button:has-text("确认发布")', 'button:has-text("确定")', '.confirm-btn'],
+                    timeout=5000,
+                    label="确认发布",
                 )
-                if confirm_btn.count() > 0:
-                    confirm_btn.first.click()
-                    time.sleep(5)
-
+                time.sleep(5)
                 self.take_screenshot("after_publish")
-
                 return {
                     "success": True,
                     "message": "知乎文章发布成功（RPA模式）",
                     "url": self._page.url,
                 }
             else:
-                return {
-                    "success": False,
-                    "message": "未找到发布按钮，请手动发布",
-                }
+                self.take_screenshot("publish_button_not_found")
+                return {"success": False, "message": "未找到发布按钮，请手动发布"}
 
         except Exception as e:
             self.take_screenshot("error")

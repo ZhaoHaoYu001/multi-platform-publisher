@@ -11,7 +11,9 @@ class ZhihuAdapter(PlatformAdapter):
         username = self._credentials.get("username", "")
         password = self._credentials.get("password", "")
         if username and password:
-            return self._deliver_via_api(adapted, images, **kwargs)
+            result = self._deliver_via_api(adapted, images, **kwargs)
+            if result.success:
+                return result
         return self._deliver_via_rpa(adapted, images, **kwargs)
 
     def _deliver_via_api(self, adapted: AdaptationResult, images: List[str], **kwargs: Any) -> PublishResult:
@@ -24,7 +26,7 @@ class ZhihuAdapter(PlatformAdapter):
                 url = api.upload_image(img)
                 if url:
                     image_urls.append(url)
-            result = api.create_and_publish(title=adapted.title, content=adapted.content, images=image_urls)
+            result = api.create_and_publish(title=adapted.title, content=adapted.content, image_urls=image_urls)
             return PublishResult(success=True, platform=self.platform_name, message="API发布成功", url=result.get("url"))
         except Exception as e:
             return PublishResult(success=False, platform=self.platform_name, message=f"API发布失败: {e}")
